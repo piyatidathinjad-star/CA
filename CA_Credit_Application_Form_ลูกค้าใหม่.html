@@ -6,6 +6,13 @@
 <title>Credit Application - พิจารณาขอเครดิต (ลูกค้าใหม่) | Sangchai Group</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- Used only by the embedded "ผู้ช่วยกรอก ภ.พ.30" modal (see #pp30ModalOverlay
+     near the end of the body) - OCR fallback for scanned PDFs, and its own
+     Excel/PDF export buttons. It reuses the pdf.js copy loaded above rather
+     than loading its own. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/7.0.0/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -163,6 +170,7 @@
     border-radius:5px;padding:4px 10px;font-size:14pt;cursor:pointer;
   }
   .small-btn.remove{background:#fdecea;color:var(--red);border-color:#f1b6ae;}
+  .import-btn{font-size:14px;}
 
   .summary-table{width:100%;border-collapse:collapse;font-size:16pt;margin:10px 0;}
   .summary-table th,.summary-table td{border:1px solid var(--border);padding:6px 10px;}
@@ -262,6 +270,7 @@
     .scope-box{display:none !important;}
     .hist-actions{display:none !important;}
     .tmpl-picker{display:none !important;}
+    .visibility-toggle{display:none !important;}
     table.hist th:last-child,table.hist td:last-child{display:none !important;}
     .sync-btn{display:none !important;}
     .approval-grid{grid-template-columns:1fr 1fr !important;}
@@ -297,6 +306,301 @@
     input[type=number]{-moz-appearance:textfield !important;}
     footer.note{display:none;}
   }
+</style>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+/* ===== Styles for the embedded "ผู้ช่วยกรอก ภ.พ.30" tool, scoped under
+   #pp30ModalRoot so they cannot affect the rest of this form (this tool
+   was originally its own standalone page - see the merge notes near
+   #pp30ModalOverlay in the body). ===== */
+#pp30ModalRoot{
+  --bg:#F3F5F3;
+  --surface:#FFFFFF;
+  --surface-2:#EAEEEA;
+  --surface-3:#DEE5E1;
+  --border:#D6DCD6;
+  --ink:#1B2523;
+  --ink-muted:#5B6B66;
+  --ink-faint:#8A9A94;
+  --accent:#0E6F5C;
+  --accent-ink:#FFFFFF;
+  --accent-soft:#DCEFE9;
+  --accent-soft-ink:#0B4E41;
+  --warn:#B6741E;
+  --warn-soft:#F7E9D4;
+  --warn-ink:#6B4712;
+  --danger:#B0402C;
+  --danger-soft:#F5E1DA;
+  --danger-ink:#7A2C1D;
+  --info:#3B6EA8;
+  --info-soft:#E3ECF5;
+  --info-ink:#1F3D5C;
+  --shadow: 0 1px 2px rgba(20,30,26,0.06), 0 4px 14px rgba(20,30,26,0.06);
+}
+@media (prefers-color-scheme: dark){
+#pp30ModalRoot:not([data-theme="light"]){
+    --bg:#121716;
+    --surface:#1A211F;
+    --surface-2:#212A27;
+    --surface-3:#2A3532;
+    --border:#33403C;
+    --ink:#E7ECEA;
+    --ink-muted:#9DAFA9;
+    --ink-faint:#6E7E78;
+    --accent:#4FC9AA;
+    --accent-ink:#06231C;
+    --accent-soft:#1E332C;
+    --accent-soft-ink:#9FE6D1;
+    --warn:#E3A855;
+    --warn-soft:#3A2C16;
+    --warn-ink:#F2CE97;
+    --danger:#E08267;
+    --danger-soft:#3A211B;
+    --danger-ink:#F3B39F;
+    --info:#7FB0E8;
+    --info-soft:#1B2A38;
+    --info-ink:#C9E0F5;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 18px rgba(0,0,0,0.35);
+  }
+}
+#pp30ModalRoot[data-theme="dark"]{
+  --bg:#121716;
+  --surface:#1A211F;
+  --surface-2:#212A27;
+  --surface-3:#2A3532;
+  --border:#33403C;
+  --ink:#E7ECEA;
+  --ink-muted:#9DAFA9;
+  --ink-faint:#6E7E78;
+  --accent:#4FC9AA;
+  --accent-ink:#06231C;
+  --accent-soft:#1E332C;
+  --accent-soft-ink:#9FE6D1;
+  --warn:#E3A855;
+  --warn-soft:#3A2C16;
+  --warn-ink:#F2CE97;
+  --danger:#E08267;
+  --danger-soft:#3A211B;
+  --danger-ink:#F3B39F;
+  --info:#7FB0E8;
+  --info-soft:#1B2A38;
+  --info-ink:#C9E0F5;
+  --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 18px rgba(0,0,0,0.35);
+}
+#pp30ModalRoot *{box-sizing:border-box;}
+#pp30ModalRoot{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:'TH Sarabun New','TH SarabunPSK','TH Sarabun','Sarabun','Noto Sans Thai',sans-serif;
+  font-size:17pt;
+  line-height:1.55;
+}
+#pp30ModalRoot .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 80px;}
+#pp30ModalRoot .num{font-family:'IBM Plex Mono',ui-monospace,'Courier New',monospace; font-variant-numeric:tabular-nums;}
+#pp30ModalRoot header.top{
+  display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+  margin-bottom:22px; flex-wrap:wrap;
+}
+#pp30ModalRoot header.top .title-block h1{
+  font-size:34px; font-weight:700; margin:0 0 4px; text-wrap:balance; letter-spacing:-0.01em;
+}
+#pp30ModalRoot header.top .title-block p{margin:0; color:var(--ink-muted); font-size:21px; max-width:60ch;}
+#pp30ModalRoot .badge{
+  display:inline-flex; align-items:center; gap:6px;
+  background:var(--accent-soft); color:var(--accent-soft-ink);
+  border-radius:999px; padding:6px 12px; font-size:21px; font-weight:600;
+  white-space:nowrap;
+}
+#pp30ModalRoot .card{
+  background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  box-shadow:var(--shadow); padding:20px;
+}
+#pp30ModalRoot .card + .card{margin-top:18px;}
+#pp30ModalRoot .card h2{font-size:21px; font-weight:700; margin:0 0 4px;}
+#pp30ModalRoot .card .sub{color:var(--ink-muted); font-size:21px; margin:0 0 14px;}
+#pp30ModalRoot .controls-grid{
+  display:grid; grid-template-columns: 1.1fr 1fr; gap:20px;
+}
+@media (max-width:820px){
+#pp30ModalRoot .controls-grid{grid-template-columns:1fr;}
+}
+#pp30ModalRoot .dropzone{
+  display:block; border:1.5px dashed var(--border); border-radius:12px; background:var(--surface-2);
+  padding:22px; text-align:center; cursor:pointer; transition:border-color .15s, background .15s;
+}
+#pp30ModalRoot .dropzone:hover, #pp30ModalRoot .dropzone.drag{border-color:var(--accent); background:var(--accent-soft);}
+#pp30ModalRoot .dropzone input{display:none;}
+#pp30ModalRoot .dropzone .fname{font-weight:600; margin-top:8px; word-break:break-all;}
+#pp30ModalRoot .dropzone .hint{color:var(--ink-muted); font-size:21px; margin-top:4px;}
+#pp30ModalRoot .field-row{display:flex; flex-direction:column; gap:6px; margin-bottom:16px;}
+#pp30ModalRoot .field-row:last-child{margin-bottom:0;}
+#pp30ModalRoot .field-row > label.group-label{font-size:21px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-muted);}
+#pp30ModalRoot .radio-opt{
+  display:flex; align-items:flex-start; gap:9px; padding:9px 11px; border:1px solid var(--border);
+  border-radius:9px; cursor:pointer; background:var(--surface);
+}
+#pp30ModalRoot .radio-opt:hover{border-color:var(--accent);}
+#pp30ModalRoot .radio-opt input{margin-top:3px;}
+#pp30ModalRoot .radio-opt .t{font-size:21px; font-weight:600;}
+#pp30ModalRoot .radio-opt .d{font-size:21px; color:var(--ink-muted); margin-top:1px;}
+#pp30ModalRoot .radio-group{display:flex; flex-direction:column; gap:7px;}
+#pp30ModalRoot .btn{
+  appearance:none; border:none; border-radius:9px; padding:10px 18px; font-family:inherit;
+  font-size:21px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:8px;
+  transition:filter .12s, transform .05s;
+}
+#pp30ModalRoot .btn:active{transform:translateY(1px);}
+#pp30ModalRoot .btn-primary{background:var(--accent); color:var(--accent-ink);}
+#pp30ModalRoot .btn-primary:hover{filter:brightness(1.06);}
+#pp30ModalRoot .btn-primary:disabled{opacity:.5; cursor:not-allowed;}
+#pp30ModalRoot .btn-ghost{background:var(--surface-2); color:var(--ink); border:1px solid var(--border);}
+#pp30ModalRoot .btn-ghost:hover{background:var(--surface-3);}
+#pp30ModalRoot .btn-draft{background:var(--surface-2); color:var(--ink); border:1px solid var(--border);}
+#pp30ModalRoot .btn-draft:hover{background:var(--surface-3);}
+#pp30ModalRoot .btn-sm{padding:6px 12px; font-size:21px; border-radius:7px;}
+#pp30ModalRoot .picker-strip{
+  display:flex; gap:10px; overflow-x:auto; padding:4px 2px 10px;
+}
+#pp30ModalRoot .picker-item{
+  flex:0 0 auto; width:96px; text-align:center; cursor:pointer; user-select:none;
+}
+#pp30ModalRoot .picker-item img{
+  width:96px; height:136px; object-fit:cover; border-radius:6px; border:2px solid var(--border);
+  background:var(--surface-2); display:block; opacity:.45; transition:opacity .12s, border-color .12s;
+}
+#pp30ModalRoot .picker-item.on img{opacity:1; border-color:var(--accent);}
+#pp30ModalRoot .picker-item .lbl{font-size:21px; margin-top:5px; color:var(--ink-muted); font-weight:600;}
+#pp30ModalRoot .picker-item.on .lbl{color:var(--ink);}
+#pp30ModalRoot .picker-item .tag{
+  display:inline-block; font-size:21px; padding:1px 6px; border-radius:999px; margin-top:2px;
+  background:var(--surface-3); color:var(--ink-muted); font-weight:700;
+}
+#pp30ModalRoot .picker-item.on .tag{background:var(--accent-soft); color:var(--accent-soft-ink);}
+#pp30ModalRoot .review-row{
+  border:1px solid var(--border); border-radius:12px; padding:16px; background:var(--surface);
+}
+#pp30ModalRoot .review-row + .review-row{margin-top:12px;}
+#pp30ModalRoot .review-row.unconfirmed{border-color:var(--warn); background:linear-gradient(180deg, var(--warn-soft) 0%, var(--surface) 90px);}
+#pp30ModalRoot .rr-head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; flex-wrap:wrap;}
+#pp30ModalRoot .rr-head .pageno{font-weight:700; font-size:21px;}
+#pp30ModalRoot .rr-head .pageno .num{color:var(--ink-muted); font-weight:500;}
+#pp30ModalRoot .status-pill{
+  font-size:21px; font-weight:700; padding:3px 10px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;
+}
+#pp30ModalRoot .status-pill.ok{background:var(--accent-soft); color:var(--accent-soft-ink);}
+#pp30ModalRoot .status-pill.warn{background:var(--warn-soft); color:var(--warn-ink);}
+#pp30ModalRoot .status-pill.auto{background:var(--info-soft); color:var(--info-ink);}
+#pp30ModalRoot .review-row.auto-state{border-color:var(--info); background:linear-gradient(180deg, var(--info-soft) 0%, var(--surface) 90px);}
+#pp30ModalRoot .ocr-status{
+  display:flex; align-items:center; gap:10px; font-size:21px; color:var(--ink-muted);
+  background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:9px 12px; margin-bottom:12px;
+}
+#pp30ModalRoot .ocr-status .spin{
+  width:13px; height:13px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--accent);
+  animation:pp30_ocrspin .8s linear infinite; flex:0 0 auto;
+}
+@keyframes pp30_ocrspin{ to{ transform:rotate(360deg); } }
+@media (prefers-reduced-motion: reduce){
+#pp30ModalRoot .ocr-status .spin{ animation:none; }
+}
+#pp30ModalRoot .my-select{
+  border:1px solid var(--border); border-radius:8px; padding:7px 9px; font-family:inherit; font-size:21px;
+  background:var(--surface); color:var(--ink);
+}
+#pp30ModalRoot .my-input{
+  border:1px solid var(--border); border-radius:8px; padding:7px 9px; font-family:'IBM Plex Mono',monospace; font-size:21px;
+  background:var(--surface); color:var(--ink); width:100%; text-align:right;
+}
+#pp30ModalRoot .my-input:focus, #pp30ModalRoot .my-select:focus{outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent);}
+#pp30ModalRoot .my-input::placeholder{color:var(--ink-faint); font-family:'TH Sarabun New','TH Sarabun','Sarabun',sans-serif;}
+#pp30ModalRoot .rr-when{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+#pp30ModalRoot .rr-when .hint{font-size:21px; color:var(--ink-faint);}
+#pp30ModalRoot .rr-body{display:grid; grid-template-columns: 1.3fr 1fr; gap:16px; align-items:start;}
+@media (max-width:760px){
+#pp30ModalRoot .rr-body{grid-template-columns:1fr;}
+}
+#pp30ModalRoot .crop-block{background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:8px; overflow:auto;}
+#pp30ModalRoot .crop-block img{display:block; width:100%; height:auto; border-radius:4px;}
+#pp30ModalRoot .crop-block .cap{font-size:21px; color:var(--ink-faint); margin-top:5px; text-align:center;}
+#pp30ModalRoot .crop-thumbs{display:flex; gap:10px;}
+#pp30ModalRoot .crop-thumbs .crop-block{flex:1;}
+#pp30ModalRoot .entry-cols{display:flex; flex-direction:column; gap:12px;}
+#pp30ModalRoot .entry-field label{display:block; font-size:21px; font-weight:700; color:var(--ink-muted); margin-bottom:5px;}
+#pp30ModalRoot .entry-field .unit{font-size:21px; color:var(--ink-faint); font-weight:500; margin-left:4px;}
+#pp30ModalRoot .summary-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+@media (max-width:900px){
+#pp30ModalRoot .summary-grid{grid-template-columns:1fr;}
+}
+#pp30ModalRoot .ledger{border:1px solid var(--border); border-radius:12px; overflow:hidden;}
+#pp30ModalRoot .ledger .lg-title{
+  background:var(--surface-2); padding:11px 14px; font-weight:700; font-size:21px; border-bottom:1px solid var(--border);
+}
+#pp30ModalRoot table.lg-table{width:100%; border-collapse:collapse; font-size:21px;}
+#pp30ModalRoot table.lg-table th{
+  text-align:left; padding:9px 12px; background:var(--surface-2); font-size:21px; text-transform:uppercase;
+  letter-spacing:.03em; color:var(--ink-muted); font-weight:700; border-bottom:1px solid var(--border);
+}
+#pp30ModalRoot table.lg-table th.r, #pp30ModalRoot table.lg-table td.r{text-align:right;}
+#pp30ModalRoot table.lg-table td{padding:8px 12px; border-bottom:1px solid var(--border); color:var(--ink);}
+#pp30ModalRoot table.lg-table tr:last-child td, #pp30ModalRoot table.lg-table tr.total-row td, #pp30ModalRoot table.lg-table tr.avg-row td{border-bottom:none;}
+#pp30ModalRoot table.lg-table tr.total-row td{border-top:1.5px solid var(--ink-faint); font-weight:700;}
+#pp30ModalRoot table.lg-table tr.avg-row td{color:var(--ink-muted); font-style:italic;}
+#pp30ModalRoot table.lg-table .dash{color:var(--ink-faint);}
+#pp30ModalRoot table.lg-table tr.dup td{color:var(--danger-ink);}
+#pp30ModalRoot .example-tag{
+  display:inline-flex; align-items:center; gap:5px; font-size:21px; font-weight:700;
+  background:var(--surface-3); color:var(--ink-muted); padding:2px 9px; border-radius:999px; margin-left:8px;
+}
+#pp30ModalRoot .empty-state{
+  border:1px dashed var(--border); border-radius:12px; padding:26px; text-align:center; color:var(--ink-muted);
+  background:var(--surface-2); font-size:21px;
+}
+#pp30ModalRoot .progress-wrap{display:flex; align-items:center; gap:10px; font-size:21px; color:var(--ink-muted); margin-top:10px;}
+#pp30ModalRoot .progress-bar{flex:1; height:6px; border-radius:999px; background:var(--surface-3); overflow:hidden;}
+#pp30ModalRoot .progress-bar > div{height:100%; background:var(--accent); width:0%; transition:width .2s;}
+#pp30ModalRoot .foot-actions{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:16px;}
+#pp30ModalRoot .copy-msg{font-size:21px; color:var(--accent-soft-ink); font-weight:600;}
+#pp30ModalRoot .section-title{font-size:21px; font-weight:700; margin:0 0 4px;}
+#pp30ModalRoot .section-sub{color:var(--ink-muted); font-size:21px; margin:0 0 14px;}
+#pp30ModalRoot .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:21px; color:var(--ink-muted); margin-top:10px;}
+#pp30ModalRoot .legend span.dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px;}
+#pp30ModalRoot .dot.ok{background:var(--accent);}
+#pp30ModalRoot .dot.warn{background:var(--warn);}
+#pp30ModalRoot .letterhead{
+  display:flex; align-items:center; justify-content:space-between; gap:20px;
+  background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  box-shadow:var(--shadow); padding:12px 18px; margin-bottom:18px; flex-wrap:wrap;
+}
+#pp30ModalRoot .letterhead img{height:32px; width:auto; display:block;}
+#pp30ModalRoot .letterhead .addr{text-align:right; font-size:12.5pt; line-height:1.45; color:var(--ink-muted); font-family:Arial,Helvetica,sans-serif; letter-spacing:.01em;}
+#pp30ModalRoot .letterhead .addr strong{color:var(--ink); font-weight:700;}
+#pp30ModalRoot a, #pp30ModalRoot a:visited{color:var(--accent);}
+
+/* Modal chrome for the embedded "ผู้ช่วยกรอก ภ.พ.30" tool (not part of its
+   own scoped CSS above - this is the popup shell added for this merge). */
+#pp30ModalOverlay{
+  display:none;
+  position:fixed; inset:0; z-index:9999;
+  background:rgba(20,30,26,0.55);
+  padding:24px 12px;
+  overflow-y:auto;
+  align-items:flex-start;
+  justify-content:center;
+}
+#pp30ModalOverlay.open{display:flex;}
+#pp30ModalPanel{
+  background:#fff; border-radius:14px; max-width:1220px; width:100%;
+  margin:0 auto; position:relative; box-shadow:0 10px 40px rgba(0,0,0,.35);
+  padding-top:8px;
+}
+#pp30ModalClose{
+  position:sticky; top:10px; float:right; margin:10px 14px 0 0; z-index:2;
+  background:#c0392b; color:#fff; border:none; border-radius:8px;
+  padding:8px 16px; font-size:16pt; font-weight:600; cursor:pointer;
+}
+#pp30ModalClose:hover{filter:brightness(1.08);}
 </style>
 </head>
 <body>
@@ -417,11 +721,11 @@
   <div class="bol-box" id="cmBox">
     <div class="bol-box-row">
       <div>
-        <strong>แนบไฟล์ PDF เพิ่มเติม (รายงาน CM) เพื่อดึงข้อมูลวงเงินสินเชื่ออัตโนมัติ</strong>
-        <div class="hint">ระบบจะอ่านข้อมูล รหัสลูกค้า, ระยะเวลาเครดิต และยอดขาย 3 ปีล่าสุด จากไฟล์ แล้วนำมากรอกในช่องของบริษัทที่ตรงกัน (SCE/SCR/SCO/SCORP) ให้อัตโนมัติ &mdash; กรุณาตรวจสอบความถูกต้องอีกครั้งก่อนบันทึก</div>
+        <strong>แนบไฟล์ PDF เพิ่มเติม (รายงาน Comment) เพื่อดึงข้อมูลวงเงินสินเชื่ออัตโนมัติ</strong>
+        <div class="hint">ระบบจะอ่านข้อมูล รหัสลูกค้า, ระยะเวลาเครดิต และยอดขายสูงสุด 5 ปีล่าสุด จากไฟล์ แล้วนำมากรอกในช่องของบริษัทที่ตรงกัน (SCE/SCR/SCO/SCORP) ให้อัตโนมัติ &mdash; กรุณาตรวจสอบความถูกต้องอีกครั้งก่อนบันทึก</div>
       </div>
       <div>
-        <label class="small-btn" for="cmFile" style="cursor:pointer;display:inline-block;min-width:190px;text-align:center;font-size:14pt;">เลือกไฟล์ CM PDF</label>
+        <label class="small-btn" for="cmFile" style="cursor:pointer;display:inline-block;min-width:190px;text-align:center;font-size:14pt;">เลือกไฟล์ Comment PDF</label>
         <input type="file" id="cmFile" accept="application/pdf" style="display:none;">
         <button type="button" class="small-btn" id="btnClearCm" style="margin-left:6px;min-width:190px;text-align:center;font-size:14pt;">ล้างข้อมูลที่นำเข้า</button>
       </div>
@@ -641,15 +945,42 @@
 
   </div>
 
-  <!-- ============ SECTION: CREDIT CONTROL ============ -->
+  <!-- ============ SECTION: ภ.พ.30 & บัญชีธนาคาร ============ -->
+  <!-- One shared section for the whole application (not per company set) -
+       always rendered once, right after whichever company card ends up
+       last in the DOM. -->
   <div class="card">
-    <h2>ผลการพิจารณาจากฝ่าย Credit Control</h2>
-    <div class="grid cols2">
-      <div class="field wide"><label class="req">สินค้าที่ต้องการซื้อเป็นเครดิตการค้า</label>
-        <textarea class="req-input" id="cc_product" rows="2" placeholder="ระบุสินค้าที่ต้องการซื้อเป็นเครดิตการค้า"></textarea>
+    <h2>ภ.พ.30 &amp; บัญชีธนาคาร</h2>
+    <!-- Independent show/hide toggles for each half of this card - a company
+         may not be VAT-registered (no ภ.พ.30) and/or may not have bank
+         details on file, so each half can be hidden on its own rather than
+         only as one all-or-nothing card. Screen-only controls (print-hidden
+         via .visibility-toggle, same pattern as .tmpl-picker/.sync-btn). -->
+    <div class="grid cols2 visibility-toggle" style="margin-bottom:2px;">
+      <div class="field"><label>มี ภ.พ.30 หรือไม่</label>
+        <select id="cc_has_pp30">
+          <option value="no" selected>ไม่มี</option>
+          <option value="yes">มี</option>
+        </select>
       </div>
-
-      <div class="field wide"><label class="req">ภ.พ.30 (ปี<input type="text" id="cc_pp30_year" value="69" style="width:40px;display:inline-block;text-align:center;border:1px solid #ccc;border-radius:4px;padding:1px 3px;font:inherit;color:var(--text);font-weight:600;">)</label>
+      <div class="field"><label>มีบัญชีธนาคารหรือไม่</label>
+        <select id="cc_has_bank">
+          <option value="no" selected>ไม่มี</option>
+          <option value="yes">มี</option>
+        </select>
+      </div>
+    </div>
+    <!-- Always visible regardless of the cc_has_pp30 toggle above (even when
+         "ไม่มี" is selected) - the assistant itself is often how the user
+         figures out whether the company has ภ.พ.30 data to report, so the
+         button that opens it must not be hidden by #cc_pp30_fields_wrap's
+         display:none (see updatePP30BankVisibility()). Applying data from
+         the assistant also auto-sets cc_has_pp30 to "มี" for the user. -->
+    <div class="visibility-toggle" style="margin-bottom:10px;">
+      <button type="button" class="small-btn import-btn" id="btnOpenPp30Assistant" style="white-space:nowrap;">📁 เปิดผู้ช่วยกรอก ภ.พ.30 (จากไฟล์ PDF)</button>
+    </div>
+    <div class="grid cols2">
+      <div class="field wide" id="cc_pp30_fields_wrap"><label class="req">ภ.พ.30 (ปี<input type="text" id="cc_pp30_year" value="69" style="width:40px;display:inline-block;text-align:center;border:1px solid #ccc;border-radius:4px;padding:1px 3px;font:inherit;color:var(--text);font-weight:600;">)</label>
         <select id="cc_pp30_template" class="tmpl-picker" style="margin-bottom:6px;">
           <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
           <option value="(ม.ค. - พ.ค.) มียอดขายรวม 31.83 ลบ. เฉลี่ยเดือนละ 6.37 ลบ. มียอดซื้อรวม 23.07 ลบ. เฉลี่ยเดือนละ 4.61 ลบ.">(ม.ค. - พ.ค.) มียอดขายรวม 31.83 ลบ. เฉลี่ยเดือนละ 6.37 ลบ. มียอดซื้อรวม 23.07 ลบ. เฉลี่ยเดือนละ 4.61 ลบ.</option>
@@ -657,9 +988,12 @@
         <textarea class="req-input" id="cc_pp30_detail" rows="2" placeholder="ระบุรายละเอียดยอดขาย/ยอดซื้อเพิ่มเติม"></textarea>
       </div>
 
-      <div class="field wide"><label class="req">บัญชีธนาคาร / ประเภทของเงินฝาก / ชื่อบัญชี / เลขที่บัญชี</label>
-        <div class="grid cols2" style="margin-bottom:6px;">
-          <div class="field">
+      <div class="field wide" id="cc_bank_fields_wrap"><label class="req">บัญชีธนาคาร / ประเภทของเงินฝาก / ชื่อบัญชี / เลขที่บัญชี</label>
+        <!-- "ธนาคาร" gets its own full-width row (bank legal names run long,
+             e.g. "ธนาคารทหารไทยธนชาต จำกัด (มหาชน)") with the other 3
+             fields moved to a second row underneath it. -->
+        <div style="display:grid;grid-template-columns:1fr;gap:12px 16px;margin-bottom:12px;">
+          <div class="field"><label>ธนาคาร</label>
             <input type="text" class="req-input" id="cc_bank_name" list="bankNameList" placeholder="พิมพ์ค้นหา หรือเลือกชื่อธนาคาร" autocomplete="off">
             <datalist id="bankNameList">
               <option value="ธนาคารกรุงเทพ"></option>
@@ -683,19 +1017,21 @@
               <option value="ธนาคารพัฒนาวิสาหกิจขนาดกลางและขนาดย่อมแห่งประเทศไทย (SME Bank)"></option>
             </datalist>
           </div>
-          <div class="field">
-            <input type="text" class="req-input" id="cc_bank_acc_type" list="bankAccTypeList" placeholder="พิมพ์ค้นหา หรือเลือกประเภทเงินฝาก" autocomplete="off">
-            <datalist id="bankAccTypeList">
-              <option value="ออมทรัพย์"></option>
-              <option value="กระแสรายวัน"></option>
-              <option value="ฝากประจำ"></option>
-            </datalist>
-          </div>
-          <div class="field">
-            <input type="text" class="req-input" id="cc_bank_acc_name" placeholder="ชื่อบัญชี (ลิงค์อัตโนมัติจากชื่อลูกค้า แก้ไขได้)">
-          </div>
-          <div class="field">
-            <input type="text" class="req-input" id="cc_bank_acc_no" placeholder="เลขที่บัญชี">
+          <div class="grid cols3">
+            <div class="field"><label>ประเภทของเงินฝาก</label>
+              <input type="text" class="req-input" id="cc_bank_acc_type" list="bankAccTypeList" placeholder="พิมพ์ค้นหา หรือเลือกประเภทเงินฝาก" autocomplete="off">
+              <datalist id="bankAccTypeList">
+                <option value="ออมทรัพย์"></option>
+                <option value="กระแสรายวัน"></option>
+                <option value="ฝากประจำ"></option>
+              </datalist>
+            </div>
+            <div class="field"><label>ชื่อบัญชี</label>
+              <input type="text" class="req-input" id="cc_bank_acc_name" placeholder="ชื่อบัญชี (ลิงค์อัตโนมัติจากชื่อลูกค้า แก้ไขได้)">
+            </div>
+            <div class="field"><label>เลขที่บัญชี</label>
+              <input type="text" class="req-input" id="cc_bank_acc_no" placeholder="เลขที่บัญชี">
+            </div>
           </div>
         </div>
         <select id="cc_bank_flow_template" class="tmpl-picker" style="margin-bottom:6px;">
@@ -703,6 +1039,16 @@
           <option value="เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.">เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.</option>
         </select>
         <textarea class="req-input" id="cc_bank_flow_detail" rows="2" placeholder="ระบุรายละเอียดการเดินบัญชี"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SECTION: CREDIT CONTROL ============ -->
+  <div class="card">
+    <h2>ผลการพิจารณาจากฝ่าย Credit Control</h2>
+    <div class="grid cols2">
+      <div class="field wide"><label class="req">สินค้าที่ต้องการซื้อเป็นเครดิตการค้า</label>
+        <textarea class="req-input" id="cc_product" rows="2" placeholder="ระบุสินค้าที่ต้องการซื้อเป็นเครดิตการค้า"></textarea>
       </div>
 
       <div class="field wide"><label class="req">กลุ่มลูกค้าหลัก</label>
@@ -714,7 +1060,7 @@
   <!-- ============ SECTION: FINANCIALS ============ -->
   <div class="card" id="cardFinancials">
     <h2>งบการเงินย้อนหลัง 3 ปี</h2>
-    <div class="fin-note">คอลัมน์ "ปี 2568 / 2567 / 2566" (สีแดง) กรอกได้ &nbsp;|&nbsp; แถวตัวหนา และคอลัมน์ Growth Rate / อัตราส่วนทางการเงิน คำนวณอัตโนมัติจากตัวเลขที่กรอก</div>
+    <div class="fin-note" id="finNoteText">คอลัมน์ "ปี 2568 / 2567 / 2566" (สีแดง) กรอกได้ &nbsp;|&nbsp; แถวตัวหนา และคอลัมน์ Growth Rate / อัตราส่วนทางการเงิน คำนวณอัตโนมัติจากตัวเลขที่กรอก</div>
 
     <h3>งบกำไรขาดทุน</h3>
     <div class="fin-scroll"><table class="fin" id="tbl_income"></table></div>
@@ -961,8 +1307,23 @@
 /* ============================================================
    DATA MODEL
    ============================================================ */
+// YEARS are fixed POSITIONAL slot ids ("latest year / 2nd-latest / 3rd-
+// latest"), not literal calendar years - the financial-statement table
+// always has exactly 3 year columns, but which real years they represent
+// can shift per customer (e.g. a company whose fiscal year-end isn't 31
+// Dec, or whose latest filed statement is ปี 2567 rather than 2568).
+// YEAR_LABELS holds the current on-screen label for each slot and starts
+// at the "usual" assumption (this year / last year / year before); a
+// successful BOL import re-labels it to match that document's own years
+// (see handleBolFile) via updateFinTableYearHeaders() below, and
+// "ล้างข้อมูลที่นำเข้า" (clearBolImportedFields) puts it back.
 const YEARS = ['y2568','y2567','y2566'];
 const YEAR_LABELS = {y2568:'ปี 2568', y2567:'ปี 2567', y2566:'ปี 2566'};
+// '2568' from YEAR_LABELS.y2568 ('ปี 2568') - always reads the CURRENT
+// label, so this stays correct after YEAR_LABELS has been updated.
+function yearDigits(y){ return (YEAR_LABELS[y]||'').replace(/\D/g,''); }
+// '68' from YEAR_LABELS.y2568.
+function yearShort(y){ return yearDigits(y).slice(-2); }
 
 const incomeRows = [
   {key:'rev_main', label:'รายได้หลักจากการดำเนินงาน', type:'input', est:0, def:{y2568:2925115711,y2567:2292598210,y2566:2928387553}},
@@ -1079,6 +1440,73 @@ function getVal(id){ const el=document.getElementById(id); return el? el.value :
 function setChecked(id,v){ const el=document.getElementById(id); if(el) el.checked=!!v; }
 function getChecked(id){ const el=document.getElementById(id); return el? !!el.checked : false; }
 
+/* ============================================================
+   SAVE-AS FILE PICKER (shared by every Save/Export button on this
+   page - main form Excel/draft, and the embedded ผู้ช่วยกรอก ภ.พ.30
+   modal's draft/Excel/PDF exports)
+   ------------------------------------------------------------
+   Chrome/Edge support the File System Access API's
+   showSaveFilePicker(), which pops the browser's native "Save As"
+   dialog so the person can pick the destination folder (and rename
+   the file) every time, instead of it silently landing in the
+   default Downloads folder. Firefox/Safari don't implement this API
+   at all, so on those (and if the person cancels the picker, or the
+   picker throws for any other reason - e.g. it's blocked by an
+   enterprise policy) this transparently falls back to the old
+   plain <a download> browser download.
+   ============================================================ */
+function inferSaveFileType(filename, blob){
+  const m = /\.([a-zA-Z0-9]+)$/.exec(filename || "");
+  const ext = m ? m[1].toLowerCase() : "";
+  const mimeByExt = {
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    pdf: "application/pdf",
+    json: "application/json"
+  };
+  const mime = mimeByExt[ext] || (blob && blob.type) || "application/octet-stream";
+  const accept = {};
+  accept[mime] = ["." + (ext || "bin")];
+  return { description: ext ? ext.toUpperCase() + " file" : "File", accept: accept };
+}
+
+function legacyBrowserDownload(filename, blob){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+
+// Returns a Promise resolving to {status:"saved"|"saved-legacy"|"cancelled"}.
+// Never rejects - any unexpected picker error just falls back to the plain
+// download instead of leaving the caller with an unhandled rejection.
+async function saveBlobAs(filename, blob){
+  if (window.showSaveFilePicker){
+    try{
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [inferSaveFileType(filename, blob)]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return { status: "saved" };
+    }catch(err){
+      if (err && err.name === "AbortError"){
+        return { status: "cancelled" };
+      }
+      // Any other failure (e.g. API blocked by policy, or a browser that
+      // half-implements it) - fall through to the plain download below
+      // rather than leaving the person with no file at all.
+    }
+  }
+  legacyBrowserDownload(filename, blob);
+  return { status: "saved-legacy" };
+}
+
+
 /* Comma-formatted numeric text inputs used in the financial-statement tables
    (table.fin est/year cells) — type="text" so commas can be displayed, with
    live editing kept simple: raw digits on focus, formatted with commas on blur. */
@@ -1120,9 +1548,9 @@ function buildFinTable(tableId, rows, groupLabel, prefix){
   let html = '<thead><tr>';
   html += `<th style="text-align:left;min-width:220px;">${groupLabel}</th>`;
   html += `<th style="min-width:70px;">ประมาณการ<br>ปีปัจจุบัน</th>`;
-  YEARS.forEach(y=> html += `<th style="min-width:110px;">${YEAR_LABELS[y]}</th>`);
+  YEARS.forEach(y=> html += `<th id="${tableId}_th_${y}" style="min-width:110px;">${YEAR_LABELS[y]}</th>`);
   html += `<th colspan="2">Growth Rate (%)</th></tr>`;
-  html += `<tr><th></th><th></th><th></th><th></th><th></th><th>68 vs 67</th><th>67 vs 66</th></tr></thead><tbody>`;
+  html += `<tr><th></th><th></th><th></th><th></th><th></th><th id="${tableId}_th_g68">${yearShort(YEARS[0])} vs ${yearShort(YEARS[1])}</th><th id="${tableId}_th_g67">${yearShort(YEARS[1])} vs ${yearShort(YEARS[2])}</th></tr></thead><tbody>`;
   rows.forEach(r=>{
     html += `<tr class="${r.type}">`;
     html += `<td class="label">${r.label}</td>`;
@@ -1151,9 +1579,9 @@ function buildRatioTable(){
   ];
   let html = '<thead><tr>';
   html += `<th style="text-align:left;min-width:260px;">อัตราส่วนทางการเงิน</th>`;
-  YEARS.forEach(y=> html += `<th style="min-width:110px;">${YEAR_LABELS[y]}</th>`);
+  YEARS.forEach(y=> html += `<th id="tbl_ratio_th_${y}" style="min-width:110px;">${YEAR_LABELS[y]}</th>`);
   html += `<th colspan="2">Growth Rate (%)</th></tr>`;
-  html += `<tr><th></th><th></th><th></th><th></th><th>68 vs 67</th><th>67 vs 66</th></tr></thead><tbody>`;
+  html += `<tr><th></th><th></th><th></th><th></th><th id="tbl_ratio_th_g68">${yearShort(YEARS[0])} vs ${yearShort(YEARS[1])}</th><th id="tbl_ratio_th_g67">${yearShort(YEARS[1])} vs ${yearShort(YEARS[2])}</th></tr></thead><tbody>`;
   ratioDefs.forEach(r=>{
     html += `<tr><td class="label">${r.label}</td>`;
     YEARS.forEach(y=> html += `<td class="computed-cell" id="ratio_${r.key}_${y}">-</td>`);
@@ -1161,6 +1589,30 @@ function buildRatioTable(){
     html += `<td class="computed-cell" id="ratio_${r.key}_g67">-</td></tr>`;
   });
   table.innerHTML = html;
+}
+
+/* Updates the year <th> headers (and the growth-rate sub-headers / fin-note
+   text) of the income/balance/ratio tables IN-PLACE, without rebuilding the
+   tables - a full rebuild via buildFinTable()/buildRatioTable() would wipe
+   out any values already typed/imported into the <input> cells. Called
+   after YEAR_LABELS has been changed (BOL import re-labeling the 3 slots to
+   match that document's own years, or clearBolImportedFields() restoring
+   the previous labels). */
+function updateFinTableYearHeaders(){
+  ['tbl_income','tbl_balance','tbl_ratio'].forEach(tableId=>{
+    YEARS.forEach(y=>{
+      const th = document.getElementById(`${tableId}_th_${y}`);
+      if(th) th.textContent = YEAR_LABELS[y];
+    });
+    const g68 = document.getElementById(`${tableId}_th_g68`);
+    if(g68) g68.textContent = `${yearShort(YEARS[0])} vs ${yearShort(YEARS[1])}`;
+    const g67 = document.getElementById(`${tableId}_th_g67`);
+    if(g67) g67.textContent = `${yearShort(YEARS[1])} vs ${yearShort(YEARS[2])}`;
+  });
+  const note = document.getElementById('finNoteText');
+  if(note){
+    note.innerHTML = `คอลัมน์ "${YEAR_LABELS[YEARS[0]]} / ${yearDigits(YEARS[1])} / ${yearDigits(YEARS[2])}" (สีแดง) กรอกได้ &nbsp;|&nbsp; แถวตัวหนา และคอลัมน์ Growth Rate / อัตราส่วนทางการเงิน คำนวณอัตโนมัติจากตัวเลขที่กรอก`;
+  }
 }
 
 function computeFinRows(rows, prefix){
@@ -1224,7 +1676,7 @@ function setRatioCell(key,y,v,dec){
 /* ============================================================
    PURCHASE HISTORY MINI TABLES
    ============================================================ */
-const HIST_ROW_LIMIT = 3;
+const HIST_ROW_LIMIT = 5;
 function addHistRow(prefix, year, amount){
   const tbody = document.querySelector(`#${prefix}_hist_table tbody`);
   if(tbody.querySelectorAll('tr').length >= HIST_ROW_LIMIT) return;
@@ -1269,6 +1721,19 @@ function getSelectedCompanies(){
 function updateBranchField(){
   const wrap = document.getElementById('g_branch_detail_wrap');
   if(wrap) wrap.style.display = (getVal('g_branch_type')==='สาขา') ? '' : 'none';
+}
+// Show/hide each half of the ภ.พ.30 & บัญชีธนาคาร card independently,
+// driven by the "มี ภ.พ.30 หรือไม่" / "มีบัญชีธนาคารหรือไม่" toggles above
+// it - a company may lack one or the other (or both). Hiding a half this
+// way (inline display:none) also keeps it out of the printed page, same
+// as the card's other screen-only controls.
+function updatePP30BankVisibility(){
+  const showPP30 = getVal('cc_has_pp30') !== 'no';
+  const showBank = getVal('cc_has_bank') !== 'no';
+  const pp30El = document.getElementById('cc_pp30_fields_wrap');
+  if(pp30El) pp30El.style.display = showPP30 ? '' : 'none';
+  const bankEl = document.getElementById('cc_bank_fields_wrap');
+  if(bankEl) bankEl.style.display = showBank ? '' : 'none';
 }
 // "ประเภทเงินฝาก" is a free-text field with a datalist of common options
 // (see #bankAccTypeList) rather than a plain <select>, so typing a custom
@@ -1386,6 +1851,7 @@ function recalcAll(){
   setVal('g_date', thaiToday());
   updateCreditScope();
   updateBranchField();
+  updatePP30BankVisibility();
   syncBankAccName();
   // Credit-limit sections no longer track an "existing" limit (this form is
   // for new customers only, who by definition have none) - "วงเงินที่ขออนุมัติ
@@ -1477,7 +1943,7 @@ function computeOverviewRevenueText(){
   const raw = YEARS.map(y => (getVal(`is_rev_total_${y}`) || '').trim());
   if(raw.some(v => v==='' || v==='-')) return null;
   const vals = YEARS.map(y => num(`is_rev_total_${y}`));
-  const yy = YEARS.map(y => y.slice(-2)); // 'y2568' -> '68'
+  const yy = YEARS.map(y => yearShort(y)); // e.g. 'y2568' -> '68' (follows current YEAR_LABELS)
   const parts = vals.map(v => `${(v/1e6).toFixed(2)} ลบ.`);
   const valueText = parts.length > 1
     ? parts.slice(0, -1).join(' , ') + ' และ ' + parts[parts.length - 1]
@@ -1505,7 +1971,7 @@ function computeOverviewTaxText(){
   if(rawProfit.some(v => v==='' || v==='-')) return null;
   if(rawEquity==='' || rawEquity==='-' || rawRetained==='' || rawRetained==='-') return null;
   const vals = YEARS.map(y => num(`is_net_profit_${y}`));
-  const yy = YEARS.map(y => y.slice(-2));
+  const yy = YEARS.map(y => yearShort(y));
   const parts = vals.map(fmtMbSigned);
   const valueText = parts.length > 1
     ? parts.slice(0, -1).join(' , ') + ' และ ' + parts[parts.length - 1]
@@ -1530,14 +1996,14 @@ function computeRatioCurrentText(){
   const r0 = window['_ratio_'+y0], r1 = window['_ratio_'+y1];
   const cur = r0 ? r0.current_ratio : null, prev = r1 ? r1.current_ratio : null;
   if(cur===null || cur===undefined || prev===null || prev===undefined) return null;
-  return `Current ratio ในปี ${y0.slice(1)} เท่ากับ ${cur.toFixed(2)} เท่า ${ratioDirectionWord(cur,prev)}จากปี ${y1.slice(1)} ที่เท่ากับ ${prev.toFixed(2)} เท่า`;
+  return `Current ratio ในปี ${yearDigits(y0)} เท่ากับ ${cur.toFixed(2)} เท่า ${ratioDirectionWord(cur,prev)}จากปี ${yearDigits(y1)} ที่เท่ากับ ${prev.toFixed(2)} เท่า`;
 }
 function computeRatioDeText(){
   const y0 = YEARS[0], y1 = YEARS[1];
   const r0 = window['_ratio_'+y0], r1 = window['_ratio_'+y1];
   const cur = r0 ? r0.de : null, prev = r1 ? r1.de : null;
   if(cur===null || cur===undefined || prev===null || prev===undefined) return null;
-  return `อัตราส่วน D/E ในปี ${y0.slice(1)} เท่ากับ ${cur.toFixed(2)} เท่า ${ratioDirectionWord(cur,prev)}จากปี ${y1.slice(1)} ที่เท่ากับ ${prev.toFixed(2)} เท่า`;
+  return `อัตราส่วน D/E ในปี ${yearDigits(y0)} เท่ากับ ${cur.toFixed(2)} เท่า ${ratioDirectionWord(cur,prev)}จากปี ${yearDigits(y1)} ที่เท่ากับ ${prev.toFixed(2)} เท่า`;
 }
 
 // Pulls the customer name and each requested credit-limit amount - across
@@ -1869,13 +2335,26 @@ async function exportExcel(){
   }
   r++;
 
+  // ภ.พ.30 & บัญชีธนาคาร - one shared section for the whole application
+  // (not duplicated per company set), matching the standalone card in the
+  // on-screen form right after the last company card. Match the on-screen
+  // "มี ภ.พ.30 หรือไม่" / "มีบัญชีธนาคารหรือไม่" toggles - skip exporting
+  // either half when it's marked "ไม่มี", same as it being hidden on
+  // screen/print.
+  mergeRow('ภ.พ.30 & บัญชีธนาคาร', styleSectionHeader, 20);
+  if(getVal('cc_has_pp30') !== 'no'){
+    wideFieldRow(`ภ.พ.30 (ปี${getVal('cc_pp30_year')})`, getVal('cc_pp30_detail'), {height:24});
+  }
+  if(getVal('cc_has_bank') !== 'no'){
+    wideFieldRow('บัญชีธนาคาร / ประเภทของเงินฝาก / ชื่อบัญชี / เลขที่บัญชี',
+      [getVal('cc_bank_name'), effectiveBankAccType(), getVal('cc_bank_acc_name'), getVal('cc_bank_acc_no')].filter(Boolean).join(' / '),
+      {height:24});
+    wideFieldRow('รายละเอียดการเดินบัญชี', getVal('cc_bank_flow_detail'), {height:24});
+  }
+  r++;
+
   mergeRow('ผลการพิจารณาจากฝ่าย Credit Control', styleSectionHeader, 20);
   wideFieldRow('สินค้าที่ต้องการซื้อเป็นเครดิตการค้า', getVal('cc_product'), {height:24});
-  wideFieldRow(`ภ.พ.30 (ปี${getVal('cc_pp30_year')})`, getVal('cc_pp30_detail'), {height:24});
-  wideFieldRow('บัญชีธนาคาร / ประเภทของเงินฝาก / ชื่อบัญชี / เลขที่บัญชี',
-    [getVal('cc_bank_name'), effectiveBankAccType(), getVal('cc_bank_acc_name'), getVal('cc_bank_acc_no')].filter(Boolean).join(' / '),
-    {height:24});
-  wideFieldRow('รายละเอียดการเดินบัญชี', getVal('cc_bank_flow_detail'), {height:24});
   wideFieldRow('กลุ่มลูกค้าหลัก', getVal('cc_main_customer_group'), {height:24});
   fieldRow([
     {label:'ลงนาม (เจ้าหน้าที่วิเคราะห์สินเชื่อ)', value:getVal('sig_analyst')},
@@ -1915,7 +2394,7 @@ async function exportExcel(){
 
   function finTable(rows, prefix, title){
     mergeRow2(title, styleSectionHeader, 20);
-    ['รายการ','ประมาณการปีปัจจุบัน','ปี 2568','ปี 2567','ปี 2566','Growth 68 vs 67','Growth 67 vs 66'].forEach((h,i)=>{ const c=ws2.getCell(r2,i+1); c.value=h; styleTableHeader(c); });
+    ['รายการ','ประมาณการปีปัจจุบัน',YEAR_LABELS[YEARS[0]],YEAR_LABELS[YEARS[1]],YEAR_LABELS[YEARS[2]],`Growth ${yearShort(YEARS[0])} vs ${yearShort(YEARS[1])}`,`Growth ${yearShort(YEARS[1])} vs ${yearShort(YEARS[2])}`].forEach((h,i)=>{ const c=ws2.getCell(r2,i+1); c.value=h; styleTableHeader(c); });
     r2++;
     const resolvedByYear = {y2568:{},y2567:{},y2566:{}};
     rows.forEach(row=>{
@@ -1945,7 +2424,7 @@ async function exportExcel(){
 
   mergeRow2('อัตราส่วนทางการเงิน', styleSectionHeader, 20);
   {
-    ['รายการ','','ปี 2568','ปี 2567','ปี 2566','Growth 68 vs 67','Growth 67 vs 66'].forEach((h,i)=>{ const c=ws2.getCell(r2,i+1); c.value=h; styleTableHeader(c); });
+    ['รายการ','',YEAR_LABELS[YEARS[0]],YEAR_LABELS[YEARS[1]],YEAR_LABELS[YEARS[2]],`Growth ${yearShort(YEARS[0])} vs ${yearShort(YEARS[1])}`,`Growth ${yearShort(YEARS[1])} vs ${yearShort(YEARS[2])}`].forEach((h,i)=>{ const c=ws2.getCell(r2,i+1); c.value=h; styleTableHeader(c); });
     r2++;
     const labelMap = {current_ratio:'Current Ratio (เท่า)', roa:'ROA (%)', roe:'ROE (%)', de:'D/E (เท่า)'};
     ['current_ratio','roa','roe','de'].forEach(k=>{
@@ -1988,14 +2467,7 @@ async function exportExcel(){
   const dateForFile = (getVal('g_date')||'').replace(/\//g,'-');
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `CA_${custName}_${dateForFile}.xlsx`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  await saveBlobAs(`CA_${custName}_${dateForFile}.xlsx`, blob);
  } catch(err){
    console.error(err);
    alert('เกิดข้อผิดพลาดในการสร้างไฟล์ Excel: ' + (err && err.message ? err.message : err));
@@ -2659,13 +3131,21 @@ function extractFinPageRows(items){
 }
 
 // colYears: Buddhist-era year (e.g. 2568) for each column in entries[].cols,
-// same order/length, from extractFinPageRows(). Only columns whose year is
-// one of the 3 years the form's financial-statement table actually tracks
-// (YEARS, e.g. y2568/y2567/y2566) are kept - a report with 5 years of
-// history still only contributes its latest 3, and a report with fewer
-// years of history (1 or 2 columns) simply leaves the remaining year(s)
-// unset here, which the caller then shows as "-" instead of a stale value.
-function matchFinFields(entries, fieldDefs, colYears){
+// same order/length, from extractFinPageRows(), left-to-right = most recent
+// to oldest. The form's financial-statement table always tracks exactly 3
+// year SLOTS (YEARS = y2568/y2567/y2566 - these are positional slot ids,
+// "latest / 2nd-latest / 3rd-latest", not literal calendar years) - so
+// column i just maps straight to YEARS[i] regardless of what calendar year
+// that column actually is. A report with 5 years of history still only
+// contributes its latest 3 (columns 3 and 4 are simply never read), and a
+// report with fewer years of history (1 or 2 columns) leaves the remaining
+// slot(s) unset here, which the caller then shows as "-" instead of a
+// stale value. handleBolFile() separately re-labels the 3 slots (see
+// YEAR_LABELS / updateFinTableYearHeaders) to match whichever calendar
+// years this particular document's columns actually are - a company whose
+// latest filed statement is, say, ปี 2567 (not 2568) still gets its real 3
+// years read in and shown with the right year numbers.
+function matchFinFields(entries, fieldDefs){
   const result = {};
   const normEntries = entries.map(e => ({norm: normFinLabel(e.label), cols: e.cols}));
   fieldDefs.forEach(def=>{
@@ -2689,9 +3169,8 @@ function matchFinFields(entries, fieldDefs, colYears){
     }
     if(hit){
       const vals = {};
-      colYears.forEach((by, i)=>{
-        const key = 'y'+by;
-        if(YEARS.includes(key)) vals[key] = parseFinNum(hit.cols[i]);
+      YEARS.forEach((key, i)=>{
+        if(hit.cols[i] !== undefined) vals[key] = parseFinNum(hit.cols[i]);
       });
       result[def.key] = vals;
     }
@@ -2710,6 +3189,12 @@ async function extractBolFinancials(file){
   const income = {};
   const balance = {};
   let incomePagesFound = 0, balancePagesFound = 0;
+  // Most recent Buddhist-era year actually printed in this document's own
+  // financial-statement header (colYears[0] of whichever page is read
+  // first) - used afterward to re-label the table's 3 fixed year slots so
+  // they show this document's real years instead of always assuming the
+  // newest slot is the current reporting year.
+  let newestYear = null;
 
   for(let p=1; p<=pdf.numPages; p++){
     const page = await pdf.getPage(p);
@@ -2740,21 +3225,25 @@ async function extractBolFinancials(file){
     const parsed = extractFinPageRows(items);
     if(!parsed) continue;
     const {entries, colYears} = parsed;
+    // Keep the newest year seen across every fin page read (income and
+    // balance pages of the same report should always agree, but take the
+    // max just in case one page's header parses slightly differently).
+    if(colYears.length && (newestYear === null || colYears[0] > newestYear)) newestYear = colYears[0];
 
     if(isBalance){
       balancePagesFound++;
-      const matched = matchFinFields(entries, BOL_BALANCE_FIELDS, colYears);
+      const matched = matchFinFields(entries, BOL_BALANCE_FIELDS);
       // Balance Sheet spans 2 pages (assets, then liabilities/equity) - merge
       // across pages, keeping whichever page matched a field first.
       Object.keys(matched).forEach(k=>{ if(!(k in balance)) balance[k] = matched[k]; });
     } else if(isIncome){
       incomePagesFound++;
-      const matched = matchFinFields(entries, BOL_INCOME_FIELDS, colYears);
+      const matched = matchFinFields(entries, BOL_INCOME_FIELDS);
       Object.keys(matched).forEach(k=>{ if(!(k in income)) income[k] = matched[k]; });
     }
   }
 
-  return {income, balance, incomePagesFound, balancePagesFound};
+  return {income, balance, incomePagesFound, balancePagesFound, newestYear};
 }
 
 // Field ids actually written by the most recent BOL import, so
@@ -2762,10 +3251,17 @@ async function extractBolFinancials(file){
 // typed in by hand - without needing a full "ล้างฟอร์ม". Reset at the start
 // of every new import, then cleared again once consumed.
 let lastBolFilledIds = [];
+// Snapshot of YEAR_LABELS from just before the most recent BOL import, so
+// clearBolImportedFields() can put the table's year headers back the way
+// they were too, not just the data cells - captured on every import
+// attempt (even one that ends up not touching YEAR_LABELS) so "clear" is
+// always a clean, complete undo of "import".
+let lastBolYearLabelsSnapshot = null;
 async function handleBolFile(file){
   if(!file) return;
   setBolStatus('กำลังอ่านไฟล์ PDF (หน้าแรก)...', 'busy');
   lastBolFilledIds = [];
+  lastBolYearLabelsSnapshot = {...YEAR_LABELS};
   try{
     const data = await extractBolPage1(file);
     const filled = [];
@@ -2826,6 +3322,14 @@ async function handleBolFile(file){
           });
         });
       }
+      // Re-label the table's 3 year slots to match THIS document's actual
+      // years (e.g. a company whose latest filed statement is ปี 2567, not
+      // 2568, still gets its real years shown) - see matchFinFields()'s
+      // comment for why the slots themselves stay positional.
+      if(fin.newestYear){
+        YEARS.forEach((key, i)=>{ YEAR_LABELS[key] = 'ปี ' + (fin.newestYear - i); });
+        updateFinTableYearHeaders();
+      }
       if(finCount > 0){
         filled.push(`งบการเงิน 3 ปีล่าสุด (${finCount} รายการ)`);
       } else if(fin.incomePagesFound || fin.balancePagesFound){
@@ -2863,6 +3367,13 @@ function clearBolImportedFields(){
   if(!confirm('ล้างเฉพาะข้อมูลที่ดึงจากไฟล์ BOL ล่าสุด (ไม่กระทบข้อมูลอื่นที่กรอกเอง) ยืนยันหรือไม่?')) return;
   lastBolFilledIds.forEach(id => setVal(id, ''));
   lastBolFilledIds = [];
+  // Put the year-column headers back the way they were before this import
+  // too (see the matching snapshot taken at the top of handleBolFile).
+  if(lastBolYearLabelsSnapshot){
+    Object.assign(YEAR_LABELS, lastBolYearLabelsSnapshot);
+    lastBolYearLabelsSnapshot = null;
+    updateFinTableYearHeaders();
+  }
   formatAllFinInputs();
   formatAllUsedInputs();
   recalcAll();
@@ -3076,11 +3587,19 @@ async function extractCmData(file){
     const outstandingRaw = cmValueAfterLabel(lines, 'ยอดค้างชำระ');
     if(outstandingRaw) d.latestOutstanding = outstandingRaw;
 
-    // "ยอดขาย" (sales by year) - only readable when the report renders it
-    // as plain "YYYY = amount บาท" text lines; some CM exports paste this
-    // table in as a screenshot image instead, which has no extractable
-    // text at all - in that case d.sales stays unset and the purchase-
-    // history table is left for the person to fill in by hand.
+    // "ยอดขาย" (sales by year) - CM exports render this section in one of
+    // two shapes, and reports vary in how many years they include (some
+    // show 3, some show all 5) - whatever is present is picked up, capped
+    // only at the 5 rows the purchase-history table supports:
+    //   1) a plain-text list, one year per line: "ปี YYYY = amount บาท"
+    //   2) a table: a header row of year numbers (e.g. "ORG 2022 2023 2024
+    //      2025 2026") immediately followed by one data row of amounts in
+    //      the same left-to-right order (e.g. "SCE 1,153,483.49 722,093.38
+    //      633,425.20 1,182,789.96 1,206,190.08")
+    // Some CM exports paste this table in as a screenshot image instead,
+    // which has no extractable text at all - in that case d.sales stays
+    // unset and the purchase-history table is left for the person to fill
+    // in by hand.
     const salesIdx = lines.findIndex(l => cmStripMarks(l).includes(cmStripMarks('ยอดขาย')));
     if(salesIdx >= 0){
       const years = [];
@@ -3091,9 +3610,25 @@ async function extractCmData(file){
         if(ym){ years.push({year: ym[1], amount: ym[2]==='-' ? 0 : parseFloat(ym[2].replace(/,/g,''))}); }
         else if(years.length) break;
       }
+      if(!years.length){
+        for(let i=salesIdx+1; i<lines.length-1; i++){
+          const headerL = lines[i];
+          const yearToks = headerL.match(/\b(?:19|20)\d{2}\b/g);
+          if(!yearToks || yearToks.length < 2) continue;
+          const dataL = lines[i+1];
+          const amtToks = (dataL.match(/-|[\d,]+(?:\.\d+)?/g) || []).slice(0, yearToks.length);
+          if(amtToks.length === yearToks.length){
+            yearToks.forEach((y,idx)=>{
+              const raw = amtToks[idx];
+              years.push({year:y, amount: raw==='-' ? 0 : parseFloat(raw.replace(/,/g,''))});
+            });
+          }
+          break;
+        }
+      }
       if(years.length){
         years.sort((a,b)=> parseInt(b.year,10) - parseInt(a.year,10));
-        d.sales = years.slice(0,3);
+        d.sales = years.slice(0,5);
       }
     }
 
@@ -3171,7 +3706,7 @@ async function handleCmFile(file){
 
     let msg = filledCompanies.length
       ? 'ดึงข้อมูลจากไฟล์ "'+file.name+'" สำเร็จ: ' + filledCompanies.join(' | ') + ' — กรุณาตรวจสอบความถูกต้องอีกครั้ง'
-      : 'ไม่พบข้อมูลที่ตรงตามรูปแบบ CM ในไฟล์นี้ กรุณากรอกข้อมูลด้วยตนเอง';
+      : 'ไม่พบข้อมูลที่ตรงตามรูปแบบ Comment ในไฟล์นี้ กรุณากรอกข้อมูลด้วยตนเอง';
     if(warnings.length) msg += ' | ' + warnings.join(' ');
     setCmStatus(msg, filledCompanies.length ? 'ok' : 'err');
   } catch(err){
@@ -3188,10 +3723,10 @@ async function handleCmFile(file){
 // the import.
 function clearCmImportedFields(){
   if(!lastCmFilledIds.length && !lastCmFilledHistPrefixes.length){
-    setCmStatus('ยังไม่มีข้อมูลที่นำเข้าจากไฟล์ CM ให้ล้าง', '');
+    setCmStatus('ยังไม่มีข้อมูลที่นำเข้าจากไฟล์ Comment ให้ล้าง', '');
     return;
   }
-  if(!confirm('ล้างเฉพาะข้อมูลที่ดึงจากไฟล์ CM ล่าสุด (ไม่กระทบข้อมูลอื่นที่กรอกเอง) ยืนยันหรือไม่?')) return;
+  if(!confirm('ล้างเฉพาะข้อมูลที่ดึงจากไฟล์ Comment ล่าสุด (ไม่กระทบข้อมูลอื่นที่กรอกเอง) ยืนยันหรือไม่?')) return;
   lastCmFilledIds.forEach(id => setVal(id, ''));
   lastCmFilledHistPrefixes.forEach(prefix => loadHist(prefix, []));
   lastCmFilledIds = [];
@@ -3199,7 +3734,7 @@ function clearCmImportedFields(){
   formatAllFinInputs();
   formatAllUsedInputs();
   recalcAll();
-  setCmStatus('ล้างข้อมูลที่นำเข้าจากไฟล์ CM แล้ว', '');
+  setCmStatus('ล้างข้อมูลที่นำเข้าจากไฟล์ Comment แล้ว', '');
 }
 
 /* ============================================================
@@ -3215,15 +3750,11 @@ function init(){
   document.getElementById('btnClear').addEventListener('click', clearForm);
   document.getElementById('btnExcel').addEventListener('click', exportExcel);
   document.getElementById('btnPdf').addEventListener('click', ()=>window.print());
-  document.getElementById('btnSaveDraft').addEventListener('click', ()=>{
+  document.getElementById('btnSaveDraft').addEventListener('click', async ()=>{
     const state = collectState();
     const blob = new Blob([JSON.stringify(state,null,2)], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
     const custName = (getVal('g_cust_th')||'CA_Draft').replace(/[\\\/:*?"<>|]/g,'');
-    a.href = url; a.download = `CA_Draft_${custName}.json`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    await saveBlobAs(`CA_Draft_${custName}.json`, blob);
   });
   document.getElementById('bolFile').addEventListener('change', (e)=>{
     const file = e.target.files[0];
@@ -3313,6 +3844,1569 @@ function init(){
   loadExampleData();
 }
 document.addEventListener('DOMContentLoaded', init);
+</script>
+<!-- ============================================================
+     Embedded "ผู้ช่วยกรอก ภ.พ.30" tool (merged in from a separate
+     standalone page at the user's request - it relates to the
+     ภ.พ.30 card above). Opens as a popup over this form; its own
+     body/CSS/JS live inside #pp30ModalRoot, scoped so they can't
+     affect the rest of this page (see the scoped CSS block in
+     <head>). When the person clicks "ใช้ข้อมูลนี้กรอกในฟอร์ม" inside
+     it, applyPp30ToForm() (near the end of the script block below)
+     computes a one-line summary sentence from the annual ledger,
+     in the exact format the ภ.พ.30 field already used as its
+     example template, writes it in via this page's own setVal(),
+     and closes the modal.
+     ============================================================ -->
+<div id="pp30ModalOverlay">
+  <div id="pp30ModalPanel">
+    <button type="button" id="pp30ModalClose">✕ ปิด</button>
+    <div id="pp30ModalRoot">
+<div class="wrap">
+  <header class="top">
+    <div class="title-block">
+      <h1>ผู้ช่วยกรอก ภ.พ.30</h1>
+      <p>อัปโหลดไฟล์ ภ.พ.30 (PDF หลายเดือนรวมกัน) — ระบบจะแยกแต่ละหน้าแบบฟอร์ม ขยายเฉพาะช่องยอดขาย/ยอดซื้อให้ดูง่าย แล้วรวมเป็นตารางสรุปรายปีให้อัตโนมัติ</p>
+    </div>
+    <span class="badge">⚙ ประมวลผลในเบราว์เซอร์ — ไฟล์ไม่ถูกส่งออกไปที่ใด</span>
+  </header>
+
+  <!-- ============ CONTROLS ============ -->
+  <div class="card">
+    <div class="controls-grid">
+      <div>
+        <h2>1. เลือกไฟล์ PDF</h2>
+        <p class="sub">ไฟล์ที่ดาวน์โหลดจากระบบยื่นภาษีออนไลน์ของกรมสรรพากร (มักมีหน้าแบบฟอร์มสลับกับใบเสร็จ)</p>
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept="application/pdf" />
+          <div id="dzText">📄 คลิกเพื่อเลือกไฟล์ หรือวางไฟล์ที่นี่</div>
+          <div class="fname" id="dzFname"></div>
+          <div class="hint">รองรับไฟล์ PDF ที่สแกน/ดาวน์โหลดจาก ภ.พ.30 เท่านั้น</div>
+        </label>
+        <div class="progress-wrap" id="progressWrap" style="display:none;">
+          <span id="progressLabel">กำลังอ่านไฟล์…</span>
+          <div class="progress-bar"><div id="progressBar"></div></div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-draft btn-sm" id="saveDraftBtn">💾 บันทึกฉบับร่าง (.json)</button>
+          <button type="button" class="btn btn-draft btn-sm" id="openDraftBtn">📂 เปิดฉบับร่าง</button>
+          <input type="file" id="draftFileInput" accept="application/json,.json" style="display:none;" />
+          <button type="button" class="btn btn-ghost btn-sm" id="resetBtn">🗑️ ล้างข้อมูลที่ดึงมากรอก</button>
+        </div>
+      </div>
+
+      <div>
+        <h2>2. ตั้งค่าการดึงข้อมูล</h2>
+        <p class="sub">ปรับได้ตลอดเวลา แม้ประมวลผลไฟล์ไปแล้ว</p>
+
+        <div class="field-row">
+          <label class="group-label">ช่องยอดขาย ให้ใช้ค่าจากข้อใดในแบบฟอร์ม</label>
+          <div class="radio-group">
+            <label class="radio-opt">
+              <input type="radio" name="salesSrc" value="1" checked />
+              <div>
+                <div class="t">ข้อ 1 — ยอดขายในเดือนนี้</div>
+                <div class="d">ใช้เป็นค่าหลัก — ถ้าอ่านข้อ 1 จากภาพไม่ชัด ระบบจะใช้ข้อ 4 แทนโดยอัตโนมัติ</div>
+              </div>
+            </label>
+            <label class="radio-opt">
+              <input type="radio" name="salesSrc" value="4" />
+              <div>
+                <div class="t">ข้อ 4 — ยอดขายที่ต้องเสียภาษี</div>
+                <div class="d">ค่าหลังหักข้อ 2–3 แล้ว (ปกติเท่ากับข้อ 1 ถ้าไม่มีรายการอัตรา 0% หรือยกเว้นภาษี)</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <label class="group-label">โครงสร้างหน้าในไฟล์</label>
+          <div class="radio-group">
+            <label class="radio-opt">
+              <input type="radio" name="pageMode" value="alternate" checked />
+              <div>
+                <div class="t">สลับหน้า: แบบฟอร์ม / ใบเสร็จ</div>
+                <div class="d">ค่าเริ่มต้น — ระบบจะเลือกเฉพาะหน้าคี่ (1, 3, 5, …) เป็นแบบฟอร์ม</div>
+              </div>
+            </label>
+            <label class="radio-opt">
+              <input type="radio" name="pageMode" value="all" />
+              <div>
+                <div class="t">ทุกหน้าเป็นแบบฟอร์ม ภ.พ.30</div>
+                <div class="d">ใช้เมื่อไฟล์ไม่มีใบเสร็จแทรกอยู่</div>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PAGE PICKER ============ -->
+  <div class="card" id="pickerCard" style="display:none;">
+    <h2>3. ตรวจสอบหน้าที่จะดึงข้อมูล</h2>
+    <p class="sub">คลิกที่รูปเพื่อเปิด/ปิดการใช้หน้านั้น — หน้าที่สว่างคือหน้าที่จะถูกนำไปกรอกในตารางด้านล่าง</p>
+    <div class="picker-strip" id="pickerStrip"></div>
+  </div>
+
+  <!-- ============ REVIEW ============ -->
+  <div class="card" id="reviewCard" style="display:none;">
+    <h2>4. ตรวจสอบเดือน/ปี แล้วกรอกยอด</h2>
+    <p class="sub">ระบบจะกรอกเดือน/ปี ยอดขาย และยอดซื้อให้อัตโนมัติ — ถ้าไฟล์เป็น PDF ที่มีข้อความในตัว (เช่นไฟล์จากระบบยื่นภาษีออนไลน์) จะอ่านค่าตรงจากไฟล์ได้แม่นยำ (ป้าย 📄) แต่ถ้าเป็นไฟล์สแกนภาพ ระบบจะพยายามอ่านด้วยการแปลงภาพเป็นตัวอักษรแทน (ป้าย 🔎) ซึ่งอาจผิดพลาดได้บ้าง ไม่ว่ากรณีใด ควรเทียบกับภาพขยายแล้วยืนยัน/แก้ไขก่อนใช้งานจริงเสมอ</p>
+    <div id="ocrStatusBar" class="ocr-status" style="display:none;"><span class="spin"></span><span id="ocrStatusText"></span></div>
+    <div class="legend">
+      <span><span class="dot ok"></span>ยืนยันแล้ว (แก้ไข/ตรวจแล้วโดยผู้ใช้)</span>
+      <span><span class="dot auto" style="background:var(--info);"></span>อ่านอัตโนมัติแล้ว — รอตรวจสอบ</span>
+      <span><span class="dot warn"></span>ยังไม่มีข้อมูล</span>
+    </div>
+    <div id="reviewList" style="margin-top:14px;"></div>
+  </div>
+
+  <!-- ============ SUMMARY ============ -->
+  <div class="card">
+    <div class="section-title" id="summaryTitle">5. ตารางสรุป ภ.พ.30 รายปี</div>
+    <p class="section-sub" id="summarySub">ตารางจะอัปเดตอัตโนมัติตามข้อมูลที่กรอกด้านบน — ตัวอย่างรูปแบบผลลัพธ์แสดงอยู่ด้านล่างนี้ก่อนมีข้อมูลจริง</p>
+    <div class="company-name-row" style="margin:2px 0 14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <label for="companyNameInput" style="font-size:21px; color:var(--ink-soft, #55605c);">ชื่อบริษัท (ในหัวตารางสรุป):</label>
+      <input type="text" id="companyNameInput" placeholder="ดึงจากไฟล์ PDF อัตโนมัติ — แก้ไขได้" style="flex:1; min-width:220px; padding:6px 10px; border:1px solid var(--line,#cfd8d4); border-radius:6px; font-size:21px;">
+    </div>
+    <div id="summaryArea"></div>
+    <div class="foot-actions">
+      <button class="btn btn-primary" id="applyToFormBtn">✅ ใช้ข้อมูลนี้กรอกในฟอร์ม (ช่อง "ภ.พ.30")</button>
+      <button class="btn btn-ghost" id="copyBtn">📋 คัดลอกตาราง (วางลง Excel ได้ทันที)</button>
+      <button class="btn btn-ghost" id="exportXlsxBtn">📊 ส่งออกเป็น Excel (.xlsx)</button>
+      <button class="btn btn-ghost" id="exportPdfBtn">🧾 ส่งออกเป็น PDF</button>
+      <span class="copy-msg" id="copyMsg"></span>
+    </div>
+  </div>
+
+</div>
+
+
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  "use strict";
+
+  // ---------------------------------------------------------------
+  // Constants
+  // ---------------------------------------------------------------
+  var FULL_MONTHS = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+  var SHORT_MONTHS = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+
+  // Page-fraction crop boxes, calibrated against real ภ.พ.30 e-filing PDFs
+  // (verified stable across two differing Revenue-Department template layouts).
+  // CHECKBOX_BOX is the tight 4-column x 3-row month grid only — its exact
+  // proportions feed guessMonthFromCheckbox()'s per-cell pixel math below, so
+  // it must stay just the grid, nothing more.
+  var CHECKBOX_BOX = {x0:0.55, y0:0.2556, x1:1.0, y1:0.3239};
+  // CHECKBOX_DISPLAY_BOX is the wider crop actually shown to the user for
+  // visual confirmation — it also includes the "ยื่นปกติ / สำหรับเดือนภาษี /
+  // พ.ศ." header rows above the grid for context, purely cosmetic.
+  var CHECKBOX_DISPLAY_BOX = {x0:0.55, y0:0.219, x1:1.0, y1:0.312};
+  var AMOUNT_BOX    = {x0:0.0, y0:0.40, x1:1.0, y1:0.56};
+  // Narrower crop of just the numbers column (no Thai label text), used only
+  // to feed the OCR pass — isolating the digits improves recognition.
+  var AMOUNT_OCR_BOX = {x0:0.58, y0:0.30, x1:0.80, y1:0.62};
+
+  var RENDER_SCALE = 2.6;
+
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+  // ---------------------------------------------------------------
+  // State
+  // ---------------------------------------------------------------
+  var pages = [];           // one entry per PDF page
+  var settings = { salesSrc: "1", pageMode: "alternate" };
+
+  // ---------------------------------------------------------------
+  // DOM refs
+  // ---------------------------------------------------------------
+  var $ = function(id){ return document.getElementById(id); };
+  var fileInput = $("fileInput");
+  var dropzone = $("dropzone");
+  var dzFname = $("dzFname");
+  var dzText = $("dzText");
+  var saveDraftBtn = $("saveDraftBtn");
+  var openDraftBtn = $("openDraftBtn");
+  var draftFileInput = $("draftFileInput");
+  var resetBtn = $("resetBtn");
+  var progressWrap = $("progressWrap");
+  var progressBar = $("progressBar");
+  var progressLabel = $("progressLabel");
+  var pickerCard = $("pickerCard");
+  var pickerStrip = $("pickerStrip");
+  var reviewCard = $("reviewCard");
+  var reviewList = $("reviewList");
+  var ocrStatusBar = $("ocrStatusBar");
+  var ocrStatusText = $("ocrStatusText");
+  var summaryArea = $("summaryArea");
+  var summarySub = $("summarySub");
+  var companyNameInput = $("companyNameInput");
+  if (companyNameInput){
+    companyNameInput.addEventListener("input", function(){
+      companyNameInput.dataset.touched = "1";
+      renderSummary();
+    });
+  }
+  var copyBtn = $("copyBtn");
+  var copyMsg = $("copyMsg");
+
+  document.querySelectorAll('input[name="salesSrc"]').forEach(function(r){
+    r.addEventListener("change", function(){
+      settings.salesSrc = this.value;
+      renderReview();
+      renderSummary();
+    });
+  });
+  document.querySelectorAll('input[name="pageMode"]').forEach(function(r){
+    r.addEventListener("change", function(){
+      settings.pageMode = this.value;
+      applyPageMode();
+      assignSequentialDefaults();
+      renderPicker();
+      renderReview();
+      renderSummary();
+      runAutoOcr();
+    });
+  });
+
+  dropzone.addEventListener("click", function(e){
+    if (e.target === fileInput) return;
+  });
+  fileInput.addEventListener("change", function(){
+    if (fileInput.files && fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+  if (saveDraftBtn){
+    saveDraftBtn.addEventListener("click", saveDraft);
+  }
+  if (openDraftBtn && draftFileInput){
+    openDraftBtn.addEventListener("click", function(){ draftFileInput.click(); });
+    draftFileInput.addEventListener("change", function(){
+      if (draftFileInput.files && draftFileInput.files[0]) handleDraftFile(draftFileInput.files[0]);
+      draftFileInput.value = "";
+    });
+  }
+  if (resetBtn){
+    resetBtn.addEventListener("click", function(){
+      if (pages.length && !confirm("ล้างข้อมูลที่ดึง/กรอกไว้ทั้งหมด และเริ่มใหม่?")) return;
+      resetAll();
+    });
+  }
+  ["dragover"].forEach(function(ev){
+    dropzone.addEventListener(ev, function(e){ e.preventDefault(); dropzone.classList.add("drag"); });
+  });
+  ["dragleave","drop"].forEach(function(ev){
+    dropzone.addEventListener(ev, function(e){ e.preventDefault(); dropzone.classList.remove("drag"); });
+  });
+  dropzone.addEventListener("drop", function(e){
+    e.preventDefault();
+    var f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+
+  copyBtn.addEventListener("click", copyTableToClipboard);
+  var exportXlsxBtn = $("exportXlsxBtn");
+  var exportPdfBtn = $("exportPdfBtn");
+  exportXlsxBtn.addEventListener("click", exportXlsx);
+  exportPdfBtn.addEventListener("click", exportPdf);
+
+  // "downloads" capability: lets this page hand a generated file to the viewer
+  // to save (the sandboxed viewer blocks plain <a download> links, so this is
+  // the only working export path). Resolves to null where unsupported.
+  var downloadsCap = null;
+  try{
+    if (typeof claude !== "undefined" && claude && claude.use){
+      claude.use("downloads").then(function(d){ downloadsCap = d; }).catch(function(){ downloadsCap = null; });
+    }
+  }catch(e){ downloadsCap = null; }
+
+  // ---------------------------------------------------------------
+  // File handling / PDF processing
+  // ---------------------------------------------------------------
+  function resetAll(){
+    pages = [];
+    fileInput.value = "";
+    dzFname.textContent = "";
+    dzText.textContent = "📄 คลิกเพื่อเลือกไฟล์ หรือวางไฟล์ที่นี่";
+    progressWrap.style.display = "none";
+    pickerCard.style.display = "none";
+    reviewCard.style.display = "none";
+    ocrRunning = false;
+    ocrHideStatus();
+    if (companyNameInput){
+      companyNameInput.value = "";
+      delete companyNameInput.dataset.touched;
+    }
+    window.__pp30Years = [];
+    window.__pp30ByYear = {};
+    window.__pp30CompanyName = null;
+    renderSummary();
+  }
+
+  function handleFile(file){
+    if (!window.pdfjsLib) { alert("ไม่สามารถโหลดตัวอ่าน PDF ได้ ลองรีเฟรชหน้านี้อีกครั้ง"); return; }
+    dzFname.textContent = file.name;
+    dzText.textContent = "📄 ไฟล์ที่เลือก:";
+    pages = [];
+    reviewCard.style.display = "none";
+    pickerCard.style.display = "none";
+    progressWrap.style.display = "flex";
+    progressBar.style.width = "0%";
+    progressLabel.textContent = "กำลังเปิดไฟล์ PDF…";
+
+    var reader = new FileReader();
+    reader.onload = function(){
+      var typedArray = new Uint8Array(reader.result);
+      pdfjsLib.getDocument({ data: typedArray }).promise.then(function(pdf){
+        processAllPages(pdf);
+      }).catch(function(err){
+        console.error(err);
+        progressLabel.textContent = "เปิดไฟล์ไม่สำเร็จ: ตรวจสอบว่าเป็นไฟล์ PDF ที่ถูกต้อง";
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function processAllPages(pdf){
+    var total = pdf.numPages;
+    var idx = 1;
+
+    function step(){
+      if (idx > total) {
+        progressWrap.style.display = "none";
+        applyPageMode();
+        assignSequentialDefaults();
+        pickerCard.style.display = "block";
+        reviewCard.style.display = "block";
+        renderPicker();
+        renderReview();
+        renderSummary();
+        runAutoOcr();
+        return;
+      }
+      progressLabel.textContent = "กำลังประมวลผลหน้า " + idx + " / " + total;
+      progressBar.style.width = Math.round((idx-1)/total*100) + "%";
+
+      pdf.getPage(idx).then(function(page){
+        var viewport = page.getViewport({ scale: RENDER_SCALE });
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        var ctx = canvas.getContext("2d");
+        var renderDone = page.render({ canvasContext: ctx, viewport: viewport }).promise;
+        var textItems = getPageTextItems(page);
+        return Promise.all([renderDone, textItems]).then(function(res){
+          var textFields = extractTextFields(res[1]);
+          var pageData = buildPageData(idx, canvas, textFields);
+          pages.push(pageData);
+          idx++;
+          setTimeout(step, 0);
+        });
+      }).catch(function(err){
+        console.error("page render failed", idx, err);
+        idx++;
+        setTimeout(step, 0);
+      });
+    }
+    step();
+  }
+
+  function buildPageData(pageNum, canvas, textFields){
+    var w = canvas.width, h = canvas.height;
+
+    // thumbnail
+    var thumbW = 160;
+    var thumbH = Math.round(h * (thumbW / w));
+    var thumbCanvas = document.createElement("canvas");
+    thumbCanvas.width = thumbW; thumbCanvas.height = thumbH;
+    thumbCanvas.getContext("2d").drawImage(canvas, 0,0,w,h, 0,0,thumbW,thumbH);
+
+    // checkbox-grid crop (month + year block) — tight grid only, feeds the guess
+    var cb = cropCanvas(canvas, CHECKBOX_BOX, 1.0);
+    // wider crop of the same area (plus header rows above) — shown to the user
+    var cbDisplay = cropCanvas(canvas, CHECKBOX_DISPLAY_BOX, 1.0);
+    // amount table crop (items 1 / 4 / 6) — wider, for on-screen comparison
+    var am = cropCanvas(canvas, AMOUNT_BOX, 1.15);
+    // narrow numbers-only crop, higher-res, feeds the OCR pass
+    var amOcr = cropCanvas(canvas, AMOUNT_OCR_BOX, 2.0);
+
+    var guess = guessMonthFromCheckbox(cb.canvas);
+
+    var p = {
+      pageNum: pageNum,
+      included: true,
+      thumbUrl: thumbCanvas.toDataURL("image/jpeg", 0.72),
+      checkboxUrl: cbDisplay.canvas.toDataURL("image/jpeg", 0.85),
+      amountUrl: am.canvas.toDataURL("image/jpeg", 0.88),
+      amountOcrUrl: amOcr.canvas.toDataURL("image/png"),
+      guessMonth: guess.month,
+      guessConfident: guess.confident,
+      guessSource: "image",
+      isFormPage: null,
+      month: null,
+      year: null,
+      sales: "",
+      purchase: "",
+      touched: false,
+      autoFilled: false,
+      ocrDone: false,
+      companyName: null
+    };
+
+    if (textFields){
+      p.isFormPage = !!textFields.isForm;
+      if (textFields.month){
+        p.guessMonth = textFields.month;
+        p.guessConfident = true;
+        p.guessSource = "text";
+        p.month = textFields.month;
+      }
+      if (textFields.year){ p.year = textFields.year; }
+      if (textFields.companyName){ p.companyName = textFields.companyName; }
+      var isNum = function(n){ return typeof n === "number" && !isNaN(n); };
+      var primary = (settings.salesSrc === "1") ? textFields.item1 : textFields.item4;
+      var fallback = (settings.salesSrc === "1") ? textFields.item4 : textFields.item1;
+      var salesVal = isNum(primary) ? primary : fallback;
+      if (isNum(salesVal)){ p.sales = fmtPlain(salesVal); p.autoFilled = true; }
+      if (isNum(textFields.item6)){ p.purchase = fmtPlain(textFields.item6); p.autoFilled = true; }
+      if (p.sales !== "" || p.purchase !== ""){ p.ocrDone = true; } // exact text read — skip the OCR pass for this page
+    }
+
+    return p;
+  }
+
+  function cropCanvas(srcCanvas, box, upscale){
+    var w = srcCanvas.width, h = srcCanvas.height;
+    var sx = Math.round(box.x0*w), sy = Math.round(box.y0*h);
+    var sw = Math.round((box.x1-box.x0)*w), sh = Math.round((box.y1-box.y0)*h);
+    var dw = Math.round(sw*upscale), dh = Math.round(sh*upscale);
+    var c = document.createElement("canvas");
+    c.width = dw; c.height = dh;
+    var ctx = c.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, dw, dh);
+    return { canvas: c };
+  }
+
+  // Pixel-density best-guess of which of the 12 month checkboxes is ticked.
+  // The 4-column x 3-row grid layout ( (1)(4)(7)(10) / (2)(5)(8)(11) / (3)(6)(9)(12) )
+  // is stable across the template revisions seen in real filings.
+  function guessMonthFromCheckbox(cbCanvas){
+    var w = cbCanvas.width, h = cbCanvas.height;
+    var ctx = cbCanvas.getContext("2d");
+    var img;
+    try { img = ctx.getImageData(0,0,w,h).data; } catch(e){ return {month:null, confident:false}; }
+
+    var cellW = w/4, cellH = h/3;
+    var glyphW = cellW * 0.1396;
+    var scores = [];
+    for (var c=0;c<4;c++){
+      for (var r=0;r<3;r++){
+        var x0 = Math.round(c*cellW), x1 = Math.round(c*cellW+glyphW);
+        var y0 = Math.round(r*cellH), y1 = Math.round((r+1)*cellH);
+        var dark = 0;
+        for (var y=y0;y<y1;y++){
+          for (var x=x0;x<x1;x++){
+            var i = (y*w+x)*4;
+            var lum = 0.299*img[i]+0.587*img[i+1]+0.114*img[i+2];
+            if (lum < 110) dark++;
+          }
+        }
+        var monthIdx = c*3+r+1;
+        scores.push({month:monthIdx, score:dark});
+      }
+    }
+    scores.sort(function(a,b){ return b.score-a.score; });
+    var top = scores[0], second = scores[1];
+    var confident = top && second && (top.score - second.score) > (top.score*0.18) && top.score > 40;
+    return { month: top ? top.month : null, confident: !!confident };
+  }
+
+  // ---------------------------------------------------------------
+  // Text-layer extraction — for born-digital / e-filed ภ.พ.30 PDFs that
+  // carry a real embedded text layer (as opposed to the flat scanned-image
+  // bundles the pixel-crop + OCR path above was built for). When available
+  // this is exact — read straight out of the file, no visual guessing — so
+  // it's used in preference to OCR whenever a page has one.
+  //
+  // Rather than reconstructing whole print-layout lines (which breaks on
+  // this form's two-column layout: the address block on the left and the
+  // filing-period box on the right can share near-identical y positions and
+  // get interleaved), every field is found by anchoring on its own label
+  // text item and then searching for the answer immediately to its right
+  // on the same visual row (small y difference, positive x offset). Each
+  // month name and the tick mark are their own text items, so the same
+  // technique locates the ticked checkbox directly.
+  // ---------------------------------------------------------------
+  function getPageTextItems(page){
+    return page.getTextContent().then(function(tc){
+      return tc.items
+        .filter(function(it){ return it.str && it.str.trim() !== ""; })
+        .map(function(it){ return { str: it.str, x: it.transform[4], y: it.transform[5] }; });
+    }).catch(function(){ return []; });
+  }
+
+  function findTickedMonthFromText(items){
+    var ticks = items.filter(function(it){ return it.str === "ü"; });
+    if (!ticks.length) return null;
+    var best = null;
+    FULL_MONTHS.forEach(function(mName, mi){
+      items.forEach(function(it){
+        if (it.str !== mName) return;
+        ticks.forEach(function(tk){
+          var dy = Math.abs(tk.y - it.y);
+          var dx = it.x - tk.x;
+          if (dy < 3 && dx > 0 && dx < 40){
+            best = { month: mi+1, x: it.x, y: it.y };
+          }
+        });
+      });
+    });
+    return best;
+  }
+
+  function findYearFromText(items){
+    var labels = items.filter(function(it){ return it.str.indexOf("พ.ศ.") >= 0; });
+    var candidates = [];
+    labels.forEach(function(lb){
+      items.forEach(function(it){
+        if (!/^\d{4}$/.test(it.str)) return;
+        var dy = Math.abs(it.y - lb.y);
+        var dx = it.x - lb.x;
+        if (dy < 3 && dx > 0 && dx < 60){ candidates.push({ year: parseInt(it.str,10), y: it.y }); }
+      });
+    });
+    if (!candidates.length) return null;
+    candidates.sort(function(a,b){ return b.y - a.y; }); // topmost = the tax-period box, not the filing-date footer
+    return candidates[0].year;
+  }
+
+  function findAmountRightOfLabel(items, labelSubstr, maxDx){
+    var label = null;
+    for (var i=0;i<items.length;i++){ if (items[i].str.indexOf(labelSubstr) >= 0){ label = items[i]; break; } }
+    if (!label) return null;
+    var numRe = /^[\d,]+\.\d{2}$/;
+    var candidates = items.filter(function(it){
+      if (!numRe.test(it.str)) return false;
+      var dy = Math.abs(it.y - label.y);
+      var dx = it.x - label.x;
+      return dy < 4 && dx > 0 && dx < (maxDx || 550);
+    });
+    if (!candidates.length) return null;
+    candidates.sort(function(a,b){ return a.x-b.x; });
+    return parseFloat(candidates[0].str.replace(/,/g,""));
+  }
+
+  // Reads a text (non-numeric) value that follows a label on the same row,
+  // such as the taxpayer's registered company name next to "ชื่อผู้ประกอบการ".
+  // Skips dot-leader fill lines and the decorative square glyph that pdf.js
+  // reports for underline/box characters in the form.
+  function findValueRightOfLabel(items, labelSubstr){
+    var label = null;
+    for (var i=0;i<items.length;i++){ if (items[i].str.indexOf(labelSubstr) >= 0){ label = items[i]; break; } }
+    if (!label) return null;
+    var candidates = items.filter(function(it){
+      var dy = Math.abs(it.y - label.y);
+      var dx = it.x - label.x;
+      if (dy >= 3 || dx <= 0) return false;
+      var s = it.str;
+      if (/^\.+$/.test(s)) return false;
+      if (/^ǰ+$/.test(s)) return false;
+      return true;
+    });
+    candidates.sort(function(a,b){ return a.x - b.x; });
+    var text = candidates.map(function(it){ return it.str; }).join(" ").replace(/\s+/g," ").trim();
+    return text || null;
+  }
+
+  // Returns null when the page has essentially no embedded text (a scanned
+  // page — the OCR path handles those instead), otherwise a fields object
+  // (individual fields may still be null if that particular value wasn't
+  // found, e.g. an unrelated page in the same file).
+  function extractTextFields(items){
+    if (items.length < 20) return null;
+    var isForm = items.some(function(it){ return it.str.indexOf("ภ.พ.30") >= 0 || it.str.indexOf("แบบแสดงรายการภาษีมูลค่าเพิ่ม") >= 0; });
+    var tick = findTickedMonthFromText(items);
+    var year = findYearFromText(items);
+    var item1 = findAmountRightOfLabel(items, "ยอดขายในเดือนนี้", 550);
+    var item4 = findAmountRightOfLabel(items, "ยอดขายที่ต้องเสียภาษี", 550);
+    var item6 = findAmountRightOfLabel(items, "มีสิทธินำภาษีซื้อ", 550);
+    var companyName = findValueRightOfLabel(items, "ชื่อผู้ประกอบการ");
+    return {
+      isForm: isForm,
+      month: tick ? tick.month : null,
+      year: year,
+      item1: item1, item4: item4, item6: item6,
+      companyName: companyName
+    };
+  }
+
+  function applyPageMode(){
+    pages.forEach(function(p){
+      // A page whose embedded PDF text was positively identified as a ภ.พ.30
+      // form (or positively identified as NOT one) overrides the odd/even
+      // guess below — it's a fact read from the file, not a heuristic.
+      if (p.isFormPage === true) { p.included = true; }
+      else if (p.isFormPage === false) { p.included = false; }
+      else if (settings.pageMode === "all") { p.included = true; }
+      else { p.included = (p.pageNum % 2 === 1); }
+    });
+  }
+
+  // Seed month/year: first included page uses the pixel-density guess (BE year
+  // defaults to current); every later included page defaults to "previous + 1 month".
+  // Non-destructive: pages that already have a month/year (user-edited, or set on a
+  // previous call) are left untouched and simply used as the chain anchor.
+  function assignSequentialDefaults(){
+    var prevMonth = null, prevYear = null;
+    var nowBE = new Date().getFullYear() + 543;
+    pages.forEach(function(p){
+      if (!p.included) return;
+      if (p.month === null || p.year === null) {
+        if (prevMonth === null) {
+          p.month = p.guessMonth || 1;
+          p.year = nowBE;
+        } else {
+          var m = prevMonth + 1, y = prevYear;
+          if (m > 12) { m = 1; y = prevYear + 1; }
+          p.month = m; p.year = y;
+        }
+      }
+      prevMonth = p.month; prevYear = p.year;
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Picker UI
+  // ---------------------------------------------------------------
+  function renderPicker(){
+    pickerStrip.innerHTML = "";
+    pages.forEach(function(p){
+      var item = document.createElement("div");
+      item.className = "picker-item" + (p.included ? " on" : "");
+      item.innerHTML =
+        '<img src="'+p.thumbUrl+'" alt="หน้า '+p.pageNum+'" />' +
+        '<div class="lbl">หน้า '+p.pageNum+'</div>' +
+        '<span class="tag">'+(p.included ? "แบบฟอร์ม" : "ไม่ใช้งาน")+'</span>';
+      item.addEventListener("click", function(){
+        p.included = !p.included;
+        assignSequentialDefaults();
+        renderPicker();
+        renderReview();
+        renderSummary();
+        runAutoOcr();
+      });
+      pickerStrip.appendChild(item);
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Review UI
+  // ---------------------------------------------------------------
+  function salesLabel(){
+    return settings.salesSrc === "1"
+      ? "ยอดขาย (ข้อ 1: ยอดขายในเดือนนี้)"
+      : "ยอดขาย (ข้อ 4: ยอดขายที่ต้องเสียภาษี)";
+  }
+
+  // Three review states per row:
+  //  "ok"   — user has touched/typed both fields themselves (trusted)
+  //  "auto" — OCR (or a prior fill) put a value in, but the user hasn't looked yet
+  //  "warn" — nothing there at all
+  function rowStateOf(p){
+    if (p.touched && p.sales !== "" && p.purchase !== "") return "ok";
+    if (p.sales !== "" || p.purchase !== "") return "auto";
+    return "warn";
+  }
+  function rowStateMeta(state, guessSource){
+    if (state === "ok") return { cls:"", pill:"ok", label:"✓ ยืนยันแล้ว" };
+    if (state === "auto"){
+      var label = (guessSource === "text")
+        ? "📄 อ่านจากไฟล์ PDF — โปรดตรวจสอบ"
+        : "🔎 อ่านอัตโนมัติจากภาพ — โปรดตรวจสอบ";
+      return { cls:"auto-state", pill:"auto", label:label };
+    }
+    return { cls:"unconfirmed", pill:"warn", label:"⚠ รอตรวจสอบ" };
+  }
+
+  function renderReview(){
+    reviewList.innerHTML = "";
+    var included = pages.filter(function(p){ return p.included; });
+    if (included.length === 0){
+      reviewList.innerHTML = '<div class="empty-state">ยังไม่มีหน้าแบบฟอร์มที่เลือกไว้ — ตรวจสอบการตั้งค่าโครงสร้างหน้า หรือเลือกหน้าด้วยตนเองด้านบน</div>';
+      return;
+    }
+    included.forEach(function(p){
+      var meta = rowStateMeta(rowStateOf(p), p.guessSource);
+      var row = document.createElement("div");
+      row.className = "review-row" + (meta.cls ? " "+meta.cls : "");
+      row.setAttribute("data-page", String(p.pageNum));
+
+      var monthOptions = FULL_MONTHS.map(function(name, i){
+        var v = i+1;
+        var sel = (p.month === v) ? " selected" : "";
+        return '<option value="'+v+'"'+sel+'>'+name+'</option>';
+      }).join("");
+
+      var guessHint;
+      if (p.guessSource === "text" && p.guessMonth){
+        guessHint = '<span class="hint">📄 อ่านจากไฟล์ PDF โดยตรง: ' + FULL_MONTHS[p.guessMonth-1] + '</span>';
+      } else if (p.guessMonth){
+        guessHint = '<span class="hint">ระบบคาดเดาช่องติ๊กจากภาพ: ' + FULL_MONTHS[p.guessMonth-1] + (p.guessConfident ? "" : " (ไม่ชัดเจน)") + '</span>';
+      } else {
+        guessHint = '<span class="hint">ระบบตรวจช่องติ๊กไม่ได้ — โปรดเลือกเอง</span>';
+      }
+
+      row.innerHTML =
+        '<div class="rr-head">' +
+          '<div class="pageno">หน้า ' + p.pageNum + ' <span class="num">(PDF page ' + p.pageNum + ')</span></div>' +
+          '<span class="status-pill ' + meta.pill + '">' + meta.label + '</span>' +
+        '</div>' +
+        '<div class="rr-body">' +
+          '<div>' +
+            '<div class="rr-when" style="margin-bottom:10px;">' +
+              '<select class="my-select monthSel">'+monthOptions+'</select>' +
+              '<select class="my-select yearSel"></select>' +
+              guessHint +
+            '</div>' +
+            '<div class="crop-thumbs">' +
+              '<div class="crop-block"><img src="'+p.checkboxUrl+'" alt="ช่องเดือน/ปี" /><div class="cap">ช่องเดือน / พ.ศ.</div></div>' +
+            '</div>' +
+            '<div class="crop-block" style="margin-top:10px;">' +
+              '<img src="'+p.amountUrl+'" alt="ตารางยอดขาย/ยอดซื้อ" />' +
+              '<div class="cap">ข้อ 1 / 4 / 6 — เทียบตัวเลขแล้วกรอกด้านขวา</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="entry-cols">' +
+            '<div class="entry-field">' +
+              '<label>' + salesLabel() + '</label>' +
+              '<input class="my-input salesInp" type="text" inputmode="decimal" placeholder="0.00" value="'+p.sales+'" />' +
+            '</div>' +
+            '<div class="entry-field">' +
+              '<label>ยอดซื้อ <span class="unit">(ข้อ 6: ยอดซื้อที่มีสิทธินำภาษีซื้อ)</span></label>' +
+              '<input class="my-input purchaseInp" type="text" inputmode="decimal" placeholder="0.00" value="'+p.purchase+'" />' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+
+      // year select options: guess range nowBE-2 .. nowBE+2
+      var yearSel = row.querySelector(".yearSel");
+      var nowBE = new Date().getFullYear() + 543;
+      var lo = Math.min(nowBE-3, p.year || nowBE), hi = Math.max(nowBE+2, p.year || nowBE);
+      for (var y=lo; y<=hi; y++){
+        var opt = document.createElement("option");
+        opt.value = y; opt.textContent = "พ.ศ. " + y;
+        if (p.year === y) opt.selected = true;
+        yearSel.appendChild(opt);
+      }
+
+      row.querySelector(".monthSel").addEventListener("change", function(ev){
+        p.month = parseInt(ev.target.value,10);
+        p.touched = true;
+        renderSummary();
+        markRowState(row, p);
+      });
+      yearSel.addEventListener("change", function(ev){
+        p.year = parseInt(ev.target.value,10);
+        p.touched = true;
+        renderSummary();
+        markRowState(row, p);
+      });
+      row.querySelector(".salesInp").addEventListener("input", function(ev){
+        p.sales = ev.target.value;
+        p.touched = true;
+        renderSummary();
+        markRowState(row, p);
+      });
+      row.querySelector(".purchaseInp").addEventListener("input", function(ev){
+        p.purchase = ev.target.value;
+        p.touched = true;
+        renderSummary();
+        markRowState(row, p);
+      });
+
+      reviewList.appendChild(row);
+    });
+  }
+
+  function markRowState(row, p){
+    var meta = rowStateMeta(rowStateOf(p));
+    row.classList.remove("unconfirmed", "auto-state");
+    if (meta.cls) row.classList.add(meta.cls);
+    var pill = row.querySelector(".status-pill");
+    pill.className = "status-pill " + meta.pill;
+    pill.textContent = meta.label;
+  }
+
+  // Pushes a page's current sales/purchase values into its already-rendered
+  // row without rebuilding the list (rebuilding would drop focus/cursor out
+  // from under anyone mid-edit in another row while OCR runs in the background).
+  function refreshRowValues(p){
+    var row = reviewList.querySelector('[data-page="'+p.pageNum+'"]');
+    if (!row) return;
+    var salesInp = row.querySelector(".salesInp");
+    var purchaseInp = row.querySelector(".purchaseInp");
+    if (salesInp && document.activeElement !== salesInp) salesInp.value = p.sales;
+    if (purchaseInp && document.activeElement !== purchaseInp) purchaseInp.value = p.purchase;
+    markRowState(row, p);
+  }
+
+  // ---------------------------------------------------------------
+  // Background OCR pass — best-effort. Runs entirely client-side via
+  // Tesseract.js against the narrow numbers-only crop of each page. This
+  // works when the page is opened as a standalone file (normal internet
+  // fetches to Tesseract's CDN for its wasm core + language data), but is
+  // expected to fail silently inside the claude.ai Artifact viewer, whose
+  // sandbox blocks exactly those runtime fetches — in that case this backs
+  // off after one failed attempt and the zoomed-crop + manual entry flow
+  // (already built for every row) is what the user falls back to.
+  // ---------------------------------------------------------------
+  var ocrWorker = null;
+  var ocrRunning = false;
+  var ocrUnavailable = false;
+
+  function ocrShowStatus(text){
+    ocrStatusBar.style.display = "flex";
+    ocrStatusText.textContent = text;
+  }
+  function ocrHideStatus(){
+    ocrStatusBar.style.display = "none";
+  }
+
+  function ensureOcrWorker(){
+    if (ocrWorker) return Promise.resolve(ocrWorker);
+    if (typeof Tesseract === "undefined") return Promise.reject(new Error("Tesseract.js not loaded"));
+    return Tesseract.createWorker("eng").then(function(w){
+      return Promise.resolve(w.setParameters ? w.setParameters({ tessedit_char_whitelist: "0123456789,." }) : null).then(function(){
+        ocrWorker = w;
+        return w;
+      });
+    });
+  }
+
+  function parseOcrNumbers(text){
+    var matches = String(text || "").match(/\d{1,3}(,\d{3})*\.\d{2}/g) || [];
+    return matches.map(function(s){ return parseFloat(s.replace(/,/g,"")); }).filter(function(n){ return !isNaN(n); });
+  }
+
+  // Numbers read top-to-bottom out of the ข้อ 1/2/3/4/6 column: with 2 and 3
+  // normally blank, that's [item1, item4, item6] in order — item1 is always
+  // first, item6 always last, item4 immediately precedes item6.
+  //
+  // ยอดขาย prefers ข้อ 1 (its raw pre-deduction figure), falling back to
+  // ข้อ 4 only when ข้อ 1 couldn't be read from the scan at all — the
+  // "ช่องยอดขาย ให้ใช้ค่าจากข้อใดในแบบฟอร์ม" setting still lets the user
+  // flip which one is primary. ยอดซื้อ always comes from ข้อ 6.
+  function applyOcrNumbersToPage(p, numbers){
+    if (!numbers.length) return false;
+    var item1 = numbers[0];
+    var item6 = numbers[numbers.length-1];
+    var item4 = numbers.length >= 2 ? numbers[numbers.length-2] : numbers[0];
+    var isNum = function(n){ return typeof n === "number" && !isNaN(n); };
+    var primary = (settings.salesSrc === "1") ? item1 : item4;
+    var fallback = (settings.salesSrc === "1") ? item4 : item1;
+    var salesVal = isNum(primary) ? primary : fallback;
+    var changed = false;
+    if (p.sales === "" && isNum(salesVal)){ p.sales = fmtPlain(salesVal); changed = true; }
+    if (p.purchase === "" && isNum(item6)){ p.purchase = fmtPlain(item6); changed = true; }
+    return changed;
+  }
+
+  function runOcrQueue(){
+    var next = pages.filter(function(p){ return p.included && !p.ocrDone && !p.touched; })[0];
+    if (!next){
+      ocrRunning = false;
+      ocrShowStatus("อ่านตัวเลขอัตโนมัติเสร็จแล้ว — โปรดตรวจสอบทุกแถวก่อนส่งออก");
+      setTimeout(ocrHideStatus, 5000);
+      return Promise.resolve();
+    }
+    var remaining = pages.filter(function(p){ return p.included && !p.ocrDone; }).length;
+    ocrShowStatus("กำลังอ่านตัวเลขอัตโนมัติ… (เหลืออีก " + remaining + " หน้า)");
+    return ocrWorker.recognize(next.amountOcrUrl).then(function(result){
+      var numbers = parseOcrNumbers(result && result.data && result.data.text);
+      next.ocrDone = true;
+      if (!next.touched){
+        var changed = applyOcrNumbersToPage(next, numbers);
+        if (changed){ refreshRowValues(next); renderSummary(); }
+      }
+    }).catch(function(err){
+      console.warn("OCR failed for page", next.pageNum, err);
+      next.ocrDone = true;
+    }).then(function(){
+      return runOcrQueue();
+    });
+  }
+
+  function runAutoOcr(){
+    if (ocrRunning || ocrUnavailable) return;
+    var hasTarget = pages.some(function(p){ return p.included && !p.ocrDone && !p.touched; });
+    if (!hasTarget) return;
+    ocrRunning = true;
+    ocrShowStatus("กำลังเตรียมตัวอ่านตัวเลขอัตโนมัติ…");
+    ensureOcrWorker().then(function(){
+      return runOcrQueue();
+    }).catch(function(err){
+      console.warn("OCR unavailable in this view", err);
+      ocrRunning = false;
+      ocrUnavailable = true;
+      ocrShowStatus("อ่านตัวเลขอัตโนมัติไม่ได้ในมุมมองนี้ — กรอกด้วยตนเองโดยเทียบกับภาพขยายที่ให้ไว้ในแต่ละแถว");
+      setTimeout(ocrHideStatus, 6000);
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Summary tables
+  // ---------------------------------------------------------------
+  function parseNum(v){
+    if (v === "" || v === null || v === undefined) return null;
+    var n = parseFloat(String(v).replace(/,/g,""));
+    return isNaN(n) ? null : n;
+  }
+  function fmt(n){
+    if (n === null || n === undefined) return '<span class="dash">-</span>';
+    return n.toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+
+  function buildLedgerHTML(yearBE, monthCells, isExample, companyName){
+    var totalSales=0, totalPurchase=0, cntSales=0, cntPurchase=0;
+    var rows = "";
+    for (var i=0;i<12;i++){
+      var cell = monthCells[i] || {sales:null, purchase:null, dup:false};
+      if (cell.sales !== null){ totalSales += cell.sales; cntSales++; }
+      if (cell.purchase !== null){ totalPurchase += cell.purchase; cntPurchase++; }
+      rows += '<tr'+(cell.dup ? ' class="dup"' : '')+'>' +
+        '<td>' + SHORT_MONTHS[i] + '-' + String(yearBE).slice(-2) + '</td>' +
+        '<td class="r num">' + fmt(cell.sales) + '</td>' +
+        '<td class="r num">' + fmt(cell.purchase) + '</td>' +
+        '</tr>';
+    }
+    var avgSales = cntSales ? totalSales/cntSales : null;
+    var avgPurchase = cntPurchase ? totalPurchase/cntPurchase : null;
+
+    return '<div class="ledger">' +
+      '<div class="lg-title">ภ.พ.30 ปี ' + yearBE + ' ของ' + (companyName || 'บริษัท') + (isExample ? '<span class="example-tag">ตัวอย่าง</span>' : '') + '</div>' +
+      '<div style="overflow-x:auto;">' +
+      '<table class="lg-table"><thead><tr><th>เดือน</th><th class="r">ยอดขาย</th><th class="r">ยอดซื้อ</th></tr></thead><tbody>' +
+      rows +
+      '<tr class="total-row"><td>รวมทั้งสิ้น</td><td class="r num">'+ (cntSales? fmt(totalSales) : '<span class="dash">-</span>') +'</td><td class="r num">'+ (cntPurchase? fmt(totalPurchase) : '<span class="dash">-</span>') +'</td></tr>' +
+      '<tr class="avg-row"><td>เฉลี่ยเดือนละ</td><td class="r num">'+ fmt(avgSales) +'</td><td class="r num">'+ fmt(avgPurchase) +'</td></tr>' +
+      '</tbody></table></div></div>';
+  }
+
+  function renderSummary(){
+    var included = pages.filter(function(p){ return p.included && p.year; });
+    if (included.length === 0){
+      summarySub.textContent = "ตารางจะอัปเดตอัตโนมัติตามข้อมูลที่กรอกด้านบน — ตัวอย่างรูปแบบผลลัพธ์แสดงอยู่ด้านล่างนี้ก่อนมีข้อมูลจริง";
+      var nowBE = new Date().getFullYear() + 543;
+      summaryArea.innerHTML = '<div class="summary-grid">' +
+        buildLedgerHTML(nowBE, new Array(12).fill({sales:null,purchase:null}), true) +
+        buildLedgerHTML(nowBE+1, new Array(12).fill({sales:null,purchase:null}), true) +
+        '</div>';
+      return;
+    }
+    summarySub.textContent = "อัปเดตอัตโนมัติจากแถวที่กรอกไว้ด้านบน (รวมแถวที่ยังไม่ยืนยันด้วย — ตรวจสอบสถานะได้จากป้ายสีในแต่ละแถว)";
+
+    var byYear = {}; // year -> array(12)
+    included.forEach(function(p){
+      if (!byYear[p.year]) byYear[p.year] = new Array(12).fill(null).map(function(){return {sales:null,purchase:null,dup:false};});
+      var idx = p.month - 1;
+      var cell = byYear[p.year][idx];
+      if (cell.sales !== null || cell.purchase !== null) cell.dup = true;
+      cell.sales = parseNum(p.sales);
+      cell.purchase = parseNum(p.purchase);
+    });
+
+    // Company name read directly from the PDF (first page where it was found) —
+    // still just a starting point, so it's also editable via companyNameInput.
+    var detectedName = null;
+    pages.some(function(p){ if (p.companyName){ detectedName = p.companyName; return true; } return false; });
+    var companyName = (companyNameInput && companyNameInput.value.trim()) ? companyNameInput.value.trim() : detectedName;
+    if (companyNameInput && !companyNameInput.dataset.touched && detectedName && !companyNameInput.value.trim()){
+      companyNameInput.value = detectedName;
+      companyName = detectedName;
+    }
+
+    var years = Object.keys(byYear).map(Number).sort(function(a,b){return a-b;});
+    var html = '<div class="summary-grid">';
+    years.forEach(function(y){
+      html += buildLedgerHTML(y, byYear[y], false, companyName);
+    });
+    html += '</div>';
+    if (years.length){
+      var dupCount = 0;
+      years.forEach(function(y){ byYear[y].forEach(function(c){ if(c.dup) dupCount++; }); });
+      if (dupCount){
+        html += '<p style="color:var(--danger-ink); font-size:21px; margin-top:10px;">⚠ พบเดือนที่มีมากกว่าหนึ่งหน้าซ้อนทับกัน ' + dupCount + ' รายการ (แถวสีแดงในตาราง) — ตรวจสอบเดือน/ปีของหน้าที่เกี่ยวข้องอีกครั้ง</p>';
+      }
+    }
+    summaryArea.innerHTML = html;
+    window.__pp30Years = years;
+    window.__pp30ByYear = byYear;
+    window.__pp30CompanyName = companyName;
+  }
+
+  // ---------------------------------------------------------------
+  // Save / open draft (.json) — stores only the entered/edited summary
+  // data (years, per-month sales/purchase, company name), not the
+  // original PDF pages or crop images, so it stays small and loads
+  // instantly. Opening a draft skips re-uploading/re-reading the PDF
+  // entirely and rebuilds the summary table straight from the file.
+  // ---------------------------------------------------------------
+  function saveDraft(){
+    var years = window.__pp30Years || [];
+    var byYear = window.__pp30ByYear || {};
+    var companyName = window.__pp30CompanyName || (companyNameInput && companyNameInput.value.trim()) || null;
+    if (!years.length){
+      flashMsg("ยังไม่มีข้อมูลให้บันทึกฉบับร่าง — กรอกยอดขาย/ยอดซื้ออย่างน้อยหนึ่งแถวก่อน");
+      return;
+    }
+    var draft = {
+      type: "pp30-draft",
+      version: 1,
+      savedAt: new Date().toISOString(),
+      companyName: companyName,
+      years: years,
+      byYear: byYear
+    };
+    var json = JSON.stringify(draft, null, 2);
+    var blob = new Blob([json], { type: "application/json" });
+    saveViaDownloads("ภพ30_ฉบับร่าง.json", blob);
+  }
+
+  function handleDraftFile(file){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var data;
+      try {
+        data = JSON.parse(e.target.result);
+      } catch (err){
+        flashMsg("เปิดฉบับร่างไม่สำเร็จ — ไฟล์ไม่ใช่ JSON ที่ถูกต้อง");
+        return;
+      }
+      if (!data || typeof data !== "object" || !data.byYear || !Array.isArray(data.years) || !data.years.length){
+        flashMsg("เปิดฉบับร่างไม่สำเร็จ — ไฟล์นี้ไม่ใช่ฉบับร่างของ ภ.พ.30");
+        return;
+      }
+      window.__pp30Years = data.years;
+      window.__pp30ByYear = data.byYear;
+      window.__pp30CompanyName = data.companyName || null;
+      if (companyNameInput){
+        companyNameInput.value = data.companyName || "";
+        if (data.companyName) companyNameInput.dataset.touched = "1";
+      }
+      renderSummaryFromDraft(data.years, data.byYear, data.companyName);
+      flashMsg("เปิดฉบับร่างสำเร็จ ✓ แก้ไขตัวเลขในตารางต่อได้ตามปกติ");
+    };
+    reader.onerror = function(){
+      flashMsg("อ่านไฟล์ฉบับร่างไม่สำเร็จ ลองใหม่อีกครั้ง");
+    };
+    reader.readAsText(file, "utf-8");
+  }
+
+  function renderSummaryFromDraft(years, byYear, companyName){
+    summarySub.textContent = "โหลดจากฉบับร่างที่บันทึกไว้ (ไม่ได้อัปโหลดไฟล์ PDF ใหม่) — แก้ไขตัวเลขต่อได้ตามปกติ";
+    var html = '<div class="summary-grid">';
+    years.forEach(function(y){
+      html += buildLedgerHTML(y, byYear[y] || new Array(12).fill({sales:null,purchase:null}), false, companyName);
+    });
+    html += '</div>';
+    summaryArea.innerHTML = html;
+  }
+
+  // ---------------------------------------------------------------
+  // Copy to clipboard (TSV, pastes cleanly into Excel/Sheets)
+  // ---------------------------------------------------------------
+  function copyTableToClipboard(){
+    var years = window.__pp30Years || [];
+    var byYear = window.__pp30ByYear || {};
+    var companyName = window.__pp30CompanyName;
+    if (!years.length){
+      copyMsg.textContent = "ยังไม่มีข้อมูลให้คัดลอก — กรอกยอดขาย/ยอดซื้ออย่างน้อยหนึ่งแถวก่อน";
+      setTimeout(function(){copyMsg.textContent="";}, 3500);
+      return;
+    }
+    var lines = [];
+    years.forEach(function(y, yi){
+      if (yi>0) lines.push("");
+      lines.push("ภ.พ.30 ปี " + y + " ของ" + (companyName || "บริษัท"));
+      lines.push(["เดือน","ยอดขาย","ยอดซื้อ"].join("\t"));
+      var totalS=0, totalP=0, cS=0, cP=0;
+      byYear[y].forEach(function(cell, i){
+        var s = cell.sales, p = cell.purchase;
+        if (s!==null){ totalS+=s; cS++; }
+        if (p!==null){ totalP+=p; cP++; }
+        lines.push([
+          SHORT_MONTHS[i] + "-" + String(y).slice(-2),
+          s!==null ? s.toFixed(2) : "-",
+          p!==null ? p.toFixed(2) : "-"
+        ].join("\t"));
+      });
+      lines.push(["รวมทั้งสิ้น", cS? totalS.toFixed(2):"-", cP? totalP.toFixed(2):"-"].join("\t"));
+      lines.push(["เฉลี่ยเดือนละ", cS? (totalS/cS).toFixed(2):"-", cP? (totalP/cP).toFixed(2):"-"].join("\t"));
+    });
+    var text = lines.join("\n");
+    var done = function(){
+      copyMsg.textContent = "คัดลอกแล้ว ✓ วาง (Ctrl/Cmd+V) ลง Excel ได้เลย";
+      setTimeout(function(){copyMsg.textContent="";}, 4000);
+    };
+    var fail = function(){
+      copyMsg.textContent = "คัดลอกอัตโนมัติไม่สำเร็จ โปรดเลือกและคัดลอกข้อความในตารางด้วยตนเอง";
+      setTimeout(function(){copyMsg.textContent="";}, 4500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(fail);
+    } else {
+      fail();
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Export: Excel (.xlsx) and PDF — both go through the "downloads"
+  // capability, since a plain in-page <a download> link is inert here.
+  // ---------------------------------------------------------------
+  // Split across 4 short lines (rather than the on-screen version's 3) so
+  // every line still fits the printed page width at the larger 14pt export
+  // size below — the longest combined line would run past the page margins.
+  var LETTERHEAD_LINES = [
+    "88 BUILDING A, FLOOR 2-3,",
+    "BOROMMARATCHACHONANI ROAD,",
+    "CHIMPLEE, TALING CHAN, BANGKOK 10170",
+    "Tel: 0-2446-5656, (Auto 16 Line) Fax: 0-2446-5620"
+  ];
+  var REPORT_TITLE = "รายงานสรุปยอดขาย–ยอดซื้อ ภ.พ.30 รายเดือน";
+  // Same Sangchai Group logo already embedded in the main CA form's own
+  // <div class="doc-header"> (top of this file) - duplicated here as a
+  // plain data URI so the PDF export works even though that DOM element
+  // isn't part of this modal. Used in place of the printed address block
+  // on the exported PDF's first page (see buildPdfDoc() below).
+  var PP30_LOGO_DATA_URI = "data:image/png;base64,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";
+
+  function flashMsg(msg){
+    copyMsg.textContent = msg;
+    setTimeout(function(){ copyMsg.textContent=""; }, 4500);
+  }
+
+  // Saves a generated file two ways depending on where this page is running:
+  //  - Inside the claude.ai Artifact viewer, a plain <a download> link is
+  //    inert (sandboxed), so the "downloads" capability is used instead.
+  //  - Opened as a standalone HTML file (double-clicked, hosted, emailed),
+  //    there is no such capability, but the browser's own download flow
+  //    works normally — so that's the fallback.
+  function saveViaDownloads(filename, data){
+    if (downloadsCap){
+      downloadsCap.save({ filename: filename, data: data }).then(function(res){
+        flashMsg((res.status === "saved" ? "บันทึกไฟล์แล้ว ✓ " : "ส่งไฟล์แล้ว ✓ ") + filename);
+      }).catch(function(err){
+        var msg = "บันทึกไฟล์ไม่สำเร็จ";
+        if (err && err.code === "declined") msg = "ยกเลิกการบันทึกไฟล์แล้ว";
+        else if (err && err.code === "too_large") msg = "ไฟล์มีขนาดใหญ่เกินไป (เกิน 16MB)";
+        else if (err && err.code === "rate_limited") msg = "มีการขอบันทึกไฟล์ค้างอยู่ ลองใหม่อีกครั้ง";
+        else if (err && err.message) msg = "บันทึกไฟล์ไม่สำเร็จ: " + err.message;
+        flashMsg(msg);
+      });
+      return;
+    }
+    saveViaBrowserDownload(filename, data);
+  }
+
+  function saveViaBrowserDownload(filename, data){
+    var blob = (typeof Blob !== "undefined" && data instanceof Blob) ? data : new Blob([data]);
+    // saveBlobAs() is defined in the host CA form's own script (see near
+    // setVal/getVal) and pops the browser's native "Save As" dialog so the
+    // person can pick the destination folder every time, instead of this
+    // always landing silently in the Downloads folder. It's only absent if
+    // this file is ever opened completely standalone (outside the CA form)
+    // - fall back to the old plain <a download> in that case.
+    if (typeof saveBlobAs === "function"){
+      saveBlobAs(filename, blob).then(function(res){
+        if (res.status === "cancelled") return;
+        flashMsg("บันทึกไฟล์แล้ว ✓ " + filename);
+      }).catch(function(e){
+        flashMsg("บันทึกไฟล์ไม่สำเร็จ: " + (e && e.message ? e.message : "ไม่ทราบสาเหตุ"));
+      });
+      return;
+    }
+    try{
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = filename; a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+      flashMsg("บันทึกไฟล์แล้ว ✓ " + filename);
+    } catch(e){
+      flashMsg("บันทึกไฟล์ไม่สำเร็จ: " + (e && e.message ? e.message : "ไม่ทราบสาเหตุ"));
+    }
+  }
+
+  function fmtPlain(n){
+    return n.toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+
+  // ---- Excel export ----
+  function exportXlsx(){
+    var years = window.__pp30Years || [];
+    var byYear = window.__pp30ByYear || {};
+    var companyName = window.__pp30CompanyName;
+    if (!years.length){
+      flashMsg("ยังไม่มีข้อมูลให้ส่งออก — กรอกยอดขาย/ยอดซื้ออย่างน้อยหนึ่งแถวก่อน");
+      return;
+    }
+    if (typeof XLSX === "undefined"){
+      flashMsg("โหลดตัวสร้างไฟล์ Excel ไม่สำเร็จ ลองรีเฟรชหน้านี้อีกครั้ง");
+      return;
+    }
+    var aoa = [];
+    aoa.push(["Sangchai Group"]);
+    aoa.push([LETTERHEAD_LINES.join("  ")]);
+    aoa.push([]);
+    aoa.push([REPORT_TITLE]);
+    aoa.push([]);
+
+    var merges = [];
+    years.forEach(function(y){
+      var titleRow = aoa.length;
+      aoa.push(["ภ.พ.30 ปี " + y + " ของ" + (companyName || "บริษัท")]);
+      merges.push({ s:{r:titleRow,c:0}, e:{r:titleRow,c:2} });
+      aoa.push(["เดือน","ยอดขาย","ยอดซื้อ"]);
+      var totalS=0, totalP=0, cS=0, cP=0;
+      for (var i=0;i<12;i++){
+        var cell = byYear[y][i] || {sales:null, purchase:null};
+        if (cell.sales !== null){ totalS += cell.sales; cS++; }
+        if (cell.purchase !== null){ totalP += cell.purchase; cP++; }
+        aoa.push([
+          SHORT_MONTHS[i] + "-" + String(y).slice(-2),
+          cell.sales !== null ? cell.sales : "-",
+          cell.purchase !== null ? cell.purchase : "-"
+        ]);
+      }
+      aoa.push(["รวมทั้งสิ้น", cS ? totalS : "-", cP ? totalP : "-"]);
+      aoa.push(["เฉลี่ยเดือนละ", cS ? (totalS/cS) : "-", cP ? (totalP/cP) : "-"]);
+      aoa.push([]);
+    });
+
+    var ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [{wch:16},{wch:18},{wch:18}];
+    ws["!merges"] = merges;
+    Object.keys(ws).forEach(function(addr){
+      if (addr.charAt(0) === "!") return;
+      var c = ws[addr];
+      if (c && c.t === "n") c.z = "#,##0.00";
+    });
+
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "ภ.พ.30");
+    var wbout = XLSX.write(wb, { bookType:"xlsx", type:"array" });
+    var blob = new Blob([wbout], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    saveViaDownloads("ภ.พ.30_สรุปรายปี.xlsx", blob);
+  }
+
+  // ---- PDF export (drawn to canvas per page, then embedded as images —
+  // this sidesteps needing to embed a Thai font into the PDF text layer) ----
+  var PAGE_W = 595.28, PAGE_H = 841.89, PAGE_MARGIN = 36;
+
+  function loadLogoImage(){
+    // Previously looked for a DOM element with id="letterheadLogo" to copy
+    // its src from - no such element exists in this modal (or anywhere in
+    // the host page), so this always resolved null and the exported PDF
+    // never actually showed a logo, only the address text below it. Now
+    // loads directly from the embedded PP30_LOGO_DATA_URI constant above,
+    // so it no longer depends on any particular DOM element existing.
+    return new Promise(function(resolve){
+      if (!PP30_LOGO_DATA_URI){ resolve(null); return; }
+      var img = new Image();
+      img.onload = function(){ resolve(img); };
+      img.onerror = function(){ resolve(null); };
+      img.src = PP30_LOGO_DATA_URI;
+    });
+  }
+
+  function planPdfPages(years){
+    var TABLE_BLOCK = 20+18+12*16+18+18+14; // title+header+12 rows+total+avg+gap
+    // Reserved height of the first page's letterhead block (logo + divider
+    // + report title/date - no more printed address block) — keep in sync
+    // with the actual drawing in buildPdfDoc() below if that layout changes.
+    var firstUsable = PAGE_H - PAGE_MARGIN - 84 - PAGE_MARGIN;
+    var nextUsable = PAGE_H - PAGE_MARGIN - 40 - PAGE_MARGIN;
+    var plan = [];
+    var cur = { first:true, years:[] };
+    var remaining = firstUsable;
+    years.forEach(function(y){
+      if (cur.years.length > 0 && TABLE_BLOCK > remaining){
+        plan.push(cur);
+        cur = { first:false, years:[] };
+        remaining = nextUsable;
+      }
+      cur.years.push(y);
+      remaining -= TABLE_BLOCK;
+    });
+    plan.push(cur);
+    return plan;
+  }
+
+  function drawLedgerTable(ctx, x, yTop, width, yearBE, monthCells, companyName){
+    var rowH = 16, headH = 18, titleH = 20;
+    var colMonthW = 74;
+    var colValW = (width - colMonthW) / 2;
+    var y = yTop;
+
+    ctx.fillStyle = "#0E6F5C";
+    ctx.fillRect(x, y, width, titleH);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "700 10.5pt 'TH Sarabun New', Sarabun, sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.fillText("ภ.พ.30 ปี " + yearBE + " ของ" + (companyName || "บริษัท"), x+8, y+titleH/2+1);
+    y += titleH;
+
+    ctx.fillStyle = "#EAEEEA";
+    ctx.fillRect(x, y, width, headH);
+    ctx.fillStyle = "#1B2523";
+    ctx.font = "700 9pt 'TH Sarabun New', Sarabun, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("เดือน", x+8, y+headH/2+1);
+    ctx.textAlign = "right";
+    ctx.fillText("ยอดขาย", x+colMonthW+colValW-8, y+headH/2+1);
+    ctx.fillText("ยอดซื้อ", x+width-8, y+headH/2+1);
+    y += headH;
+
+    var totalS=0, totalP=0, cS=0, cP=0;
+    for (var i=0;i<12;i++){
+      var cell = monthCells[i] || {sales:null, purchase:null};
+      if (cell.sales !== null){ totalS += cell.sales; cS++; }
+      if (cell.purchase !== null){ totalP += cell.purchase; cP++; }
+      if (i % 2 === 1){ ctx.fillStyle = "#F7F8F7"; ctx.fillRect(x,y,width,rowH); }
+      ctx.fillStyle = "#1B2523";
+      ctx.font = "9.5pt 'TH Sarabun New', Sarabun, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(SHORT_MONTHS[i] + "-" + String(yearBE).slice(-2), x+8, y+rowH/2+1);
+      ctx.font = "8.5pt 'IBM Plex Mono', monospace";
+      ctx.textAlign = "right";
+      ctx.fillText(cell.sales !== null ? fmtPlain(cell.sales) : "-", x+colMonthW+colValW-8, y+rowH/2+1);
+      ctx.fillText(cell.purchase !== null ? fmtPlain(cell.purchase) : "-", x+width-8, y+rowH/2+1);
+      ctx.strokeStyle = "#D6DCD6"; ctx.lineWidth = 0.5;
+      ctx.strokeRect(x, y, width, rowH);
+      y += rowH;
+    }
+
+    ctx.fillStyle = "#DCEFE9"; ctx.fillRect(x,y,width,headH);
+    ctx.fillStyle = "#0B4E41";
+    ctx.font = "700 9.5pt 'TH Sarabun New', Sarabun, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("รวมทั้งสิ้น", x+8, y+headH/2+1);
+    ctx.font = "700 8.5pt 'IBM Plex Mono', monospace";
+    ctx.textAlign = "right";
+    ctx.fillText(cS ? fmtPlain(totalS) : "-", x+colMonthW+colValW-8, y+headH/2+1);
+    ctx.fillText(cP ? fmtPlain(totalP) : "-", x+width-8, y+headH/2+1);
+    y += headH;
+
+    ctx.fillStyle = "#FFFFFF"; ctx.fillRect(x,y,width,headH);
+    ctx.fillStyle = "#5B6B66";
+    ctx.font = "italic 9.5pt 'TH Sarabun New', Sarabun, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("เฉลี่ยเดือนละ", x+8, y+headH/2+1);
+    ctx.font = "italic 8.5pt 'IBM Plex Mono', monospace";
+    ctx.textAlign = "right";
+    ctx.fillText(cS ? fmtPlain(totalS/cS) : "-", x+colMonthW+colValW-8, y+headH/2+1);
+    ctx.fillText(cP ? fmtPlain(totalP/cP) : "-", x+width-8, y+headH/2+1);
+    y += headH;
+
+    ctx.strokeStyle = "#8A9A94"; ctx.lineWidth = 1;
+    ctx.strokeRect(x, yTop, width, y-yTop);
+
+    return y;
+  }
+
+  function buildPdfDoc(years, byYear, companyName){
+    var fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    return Promise.all([fontsReady, loadLogoImage()]).then(function(res){
+      var logoImg = res[1];
+      var SCALE = 2.5;
+      var plan = planPdfPages(years);
+      var doc = new jspdf.jsPDF({ unit:"pt", format:"a4" });
+
+      plan.forEach(function(pageInfo, pageIdx){
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.round(PAGE_W*SCALE);
+        canvas.height = Math.round(PAGE_H*SCALE);
+        var ctx = canvas.getContext("2d");
+        ctx.scale(SCALE, SCALE);
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, PAGE_W, PAGE_H);
+
+        var cursorY = PAGE_MARGIN;
+        if (pageInfo.first){
+          // Logo sits alone on the left (no more printed address block
+          // underneath it — see PP30_LOGO_DATA_URI / loadLogoImage() above)
+          // so it can run a bit larger than before now that it isn't
+          // sharing the row with anything else.
+          var logoH = 34;
+          if (logoImg){
+            var logoW = logoImg.width * (logoH/logoImg.height);
+            ctx.drawImage(logoImg, PAGE_MARGIN, cursorY, logoW, logoH);
+          }
+          cursorY += logoH + 10;
+          ctx.strokeStyle = "#D6DCD6"; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(PAGE_MARGIN, cursorY); ctx.lineTo(PAGE_W-PAGE_MARGIN, cursorY); ctx.stroke();
+          cursorY += 16;
+          ctx.fillStyle = "#1B2523";
+          ctx.font = "700 13pt 'TH Sarabun New', Sarabun, sans-serif";
+          ctx.textAlign = "left";
+          ctx.fillText(REPORT_TITLE, PAGE_MARGIN, cursorY);
+          ctx.font = "9pt 'TH Sarabun New', Sarabun, sans-serif";
+          ctx.fillStyle = "#8A9A94";
+          var genLabel = "จัดทำเมื่อ " + new Date().toLocaleDateString("th-TH", {year:"numeric", month:"long", day:"numeric"});
+          ctx.textAlign = "right";
+          ctx.fillText(genLabel, PAGE_W-PAGE_MARGIN, cursorY);
+          cursorY += 20;
+        } else {
+          ctx.fillStyle = "#1B2523";
+          ctx.font = "700 11pt 'TH Sarabun New', Sarabun, sans-serif";
+          ctx.textAlign = "left";
+          ctx.textBaseline = "alphabetic";
+          ctx.fillText(REPORT_TITLE + " (ต่อ)", PAGE_MARGIN, cursorY+12);
+          cursorY += 24;
+        }
+
+        pageInfo.years.forEach(function(y){
+          cursorY = drawLedgerTable(ctx, PAGE_MARGIN, cursorY, PAGE_W-2*PAGE_MARGIN, y, byYear[y], companyName);
+          cursorY += 14;
+        });
+
+        ctx.fillStyle = "#8A9A94";
+        ctx.font = "8pt 'TH Sarabun New', Sarabun, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText("หน้า " + (pageIdx+1) + " / " + plan.length, PAGE_W/2, PAGE_H-20);
+
+        var imgData = canvas.toDataURL("image/png");
+        if (pageIdx > 0) doc.addPage();
+        doc.addImage(imgData, "PNG", 0, 0, PAGE_W, PAGE_H);
+      });
+
+      return doc;
+    });
+  }
+
+  function exportPdf(){
+    var years = window.__pp30Years || [];
+    var byYear = window.__pp30ByYear || {};
+    var companyName = window.__pp30CompanyName;
+    if (!years.length){
+      flashMsg("ยังไม่มีข้อมูลให้ส่งออก — กรอกยอดขาย/ยอดซื้ออย่างน้อยหนึ่งแถวก่อน");
+      return;
+    }
+    if (typeof jspdf === "undefined"){
+      flashMsg("โหลดตัวสร้างไฟล์ PDF ไม่สำเร็จ ลองรีเฟรชหน้านี้อีกครั้ง");
+      return;
+    }
+    flashMsg("กำลังสร้างไฟล์ PDF…");
+    buildPdfDoc(years, byYear, companyName).then(function(doc){
+      var blob = doc.output("blob");
+      saveViaDownloads("ภ.พ.30_สรุปรายปี.pdf", blob);
+    }).catch(function(err){
+      console.error(err);
+      flashMsg("สร้างไฟล์ PDF ไม่สำเร็จ");
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Hand-off to the host Credit Application form: this tool normally
+  // lives on its own page, but here it's embedded as a modal inside the
+  // CA form's ภ.พ.30 card - this turns the computed annual ledger into
+  // the same one-line prose format that card's "ภ.พ.30" textarea already
+  // uses (see the cc_pp30_template example option in the host form), fills
+  // it in via the host's own setVal(), and closes the modal. It relies on
+  // setVal/updatePP30BankVisibility being defined globally by the host
+  // page (they are, in CA_Credit_Application_Form_ลูกค้าใหม่.html) - if this
+  // file is ever opened standalone again those just won't exist and the
+  // button below no-ops with an alert instead of throwing.
+  // ---------------------------------------------------------------
+  function applyPp30ToForm(){
+    var years = window.__pp30Years || [];
+    if (!years.length){
+      alert("กรุณาอัปโหลดไฟล์และกรอกข้อมูลยอดขาย/ยอดซื้ออย่างน้อย 1 เดือนก่อน");
+      return;
+    }
+    if (typeof setVal !== "function"){
+      alert("ไม่พบฟอร์มหลักที่จะนำข้อมูลไปกรอก (เปิดเครื่องมือนี้แบบเดี่ยวอยู่หรือไม่?)");
+      return;
+    }
+
+    // Prefer the latest year that actually has at least one filled month -
+    // years[] itself only means "at least one page was assigned to this
+    // year", not that its sales/purchase boxes were filled in.
+    var chosenYear = null, cells = null;
+    for (var yi = years.length - 1; yi >= 0; yi--){
+      var yc = (window.__pp30ByYear || {})[years[yi]] || [];
+      var hasData = yc.some(function(c){ return c && (c.sales !== null || c.purchase !== null); });
+      if (hasData){ chosenYear = years[yi]; cells = yc; break; }
+    }
+    if (!chosenYear){
+      alert("ยังไม่มีปีใดกรอกยอดขาย/ยอดซื้อเลย กรุณากรอกอย่างน้อย 1 เดือนก่อน");
+      return;
+    }
+
+    var totalSales=0, totalPurchase=0, cntSales=0, cntPurchase=0, firstIdx=-1, lastIdx=-1;
+    for (var i=0;i<12;i++){
+      var c = cells[i] || {sales:null, purchase:null};
+      if (c.sales !== null){ totalSales += c.sales; cntSales++; if (firstIdx===-1) firstIdx=i; lastIdx=i; }
+      if (c.purchase !== null){ totalPurchase += c.purchase; cntPurchase++; if (firstIdx===-1) firstIdx=i; lastIdx=i; }
+    }
+    var avgSales = cntSales ? totalSales/cntSales : 0;
+    var avgPurchase = cntPurchase ? totalPurchase/cntPurchase : 0;
+    var monthRange = (firstIdx === lastIdx) ? SHORT_MONTHS[firstIdx] : (SHORT_MONTHS[firstIdx] + " - " + SHORT_MONTHS[lastIdx]);
+    var toMB = function(n){ return (n/1000000).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2}); };
+    var sentence = "(" + monthRange + ") มียอดขายรวม " + toMB(totalSales) + " ลบ. เฉลี่ยเดือนละ " + toMB(avgSales) +
+      " ลบ. มียอดซื้อรวม " + toMB(totalPurchase) + " ลบ. เฉลี่ยเดือนละ " + toMB(avgPurchase) + " ลบ.";
+
+    setVal("cc_pp30_detail", sentence);
+    setVal("cc_has_pp30", "yes");
+    // 2-digit Buddhist year to match the "(ปี 69)" field next to the label
+    // (2569 -> "69") - same slice(-2) convention used elsewhere in this file
+    // (e.g. the month/year column in drawLedgerTable's PDF export).
+    setVal("cc_pp30_year", String(chosenYear).slice(-2));
+    if (typeof updatePP30BankVisibility === "function") updatePP30BankVisibility();
+
+    // Close via the same .open class the open/close wiring script below
+    // uses (not a direct style.display write) so the modal can still be
+    // reopened afterward via classList.add('open') on a later click.
+    var overlay = document.getElementById("pp30ModalOverlay");
+    if (overlay) overlay.classList.remove("open");
+
+    alert('นำข้อความสรุป ภ.พ.30 ปี ' + chosenYear + ' ไปกรอกในช่อง "ภ.พ.30" ของฟอร์มแล้ว กรุณาตรวจสอบความถูกต้องอีกครั้ง');
+  }
+  var applyToFormBtn = $("applyToFormBtn");
+  if (applyToFormBtn) applyToFormBtn.addEventListener("click", applyPp30ToForm);
+
+  // initial render (example ledger at rest)
+  renderSummary();
+
+})();
+</script>
+<script>
+(function(){
+  var openBtn = document.getElementById('btnOpenPp30Assistant');
+  var overlay = document.getElementById('pp30ModalOverlay');
+  var closeBtn = document.getElementById('pp30ModalClose');
+  if(openBtn && overlay){
+    openBtn.addEventListener('click', function(){ overlay.classList.add('open'); });
+  }
+  if(closeBtn && overlay){
+    closeBtn.addEventListener('click', function(){ overlay.classList.remove('open'); });
+  }
+  if(overlay){
+    overlay.addEventListener('click', function(e){
+      if(e.target === overlay) overlay.classList.remove('open');
+    });
+  }
+})();
 </script>
 </body>
 </html>
