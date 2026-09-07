@@ -1860,27 +1860,50 @@ function recalcAll(){
   // SCE
   const sceReq = num('sce_requested');
   const sceColl = num('sce_collateral');
-  setVal('sce_collateral_pct', sceReq? fmtPct(sceColl/sceReq) : '-');
 
   // SCR
   const scrReq = num('scr_requested');
   const scrColl = num('scr_collateral');
-  setVal('scr_collateral_pct', scrReq? fmtPct(scrColl/scrReq) : '-');
 
   // SCE/SCR (combined)
   const scescrReq = num('scescr_requested');
   const scescrColl = num('scescr_collateral');
-  setVal('scescr_collateral_pct', scescrReq? fmtPct(scescrColl/scescrReq) : '-');
 
   // SCO
   const scoReq = num('sco_requested');
   const scoColl = num('sco_collateral');
-  setVal('sco_collateral_pct', scoReq? fmtPct(scoColl/scoReq) : '-');
 
   // SCORP
   const scorpReq = num('scorp_requested');
   const scorpColl = num('scorp_collateral');
-  setVal('scorp_collateral_pct', scorpReq? fmtPct(scorpColl/scorpReq) : '-');
+
+  // "หลักประกัน / วงเงินรวม (คำนวณอัตโนมัติ)" - normally each company's own
+  // ratio (its own หลักประกันใหม่ over its own วงเงินที่ขออนุมัติ), but when
+  // this credit request actually spans more than one company - "จำนวนชุด
+  // ข้อมูลวงเงินสินเชื่อ" > 1, e.g. requesting for SCE and SCR together in
+  // the same application - the ratio for EACH of those companies is judged
+  // against the whole request's COMBINED วงเงินที่ขออนุมัติ (the sum of
+  // every selected company's own requested amount) rather than each one in
+  // isolation, since the collateral is backing the multi-company request as
+  // a whole. Only the denominator changes this way; each company's own
+  // หลักประกันใหม่ numerator still comes from what was actually typed into
+  // that company's own field. With only 1 company selected this reduces to
+  // exactly the previous per-company behavior (denominator = that
+  // company's own requested amount). Mirrors the same fix in
+  // CA_Credit_Application_Form_116.html (there the denominator is each
+  // company's วงเงินสินเชื่อรวม = orig_limit+requested, since existing
+  // customers can already have a limit; here it's just requested, since a
+  // new customer by definition has none yet).
+  const collReqs = {sce:sceReq, scr:scrReq, scescr:scescrReq, sco:scoReq, scorp:scorpReq};
+  const collAmounts = {sce:sceColl, scr:scrColl, scescr:scescrColl, sco:scoColl, scorp:scorpColl};
+  const selectedForColl = getSelectedCompanies();
+  const combinedCreditReq = selectedForColl.size > 1
+    ? Array.from(selectedForColl).reduce((sum,p)=> sum + (collReqs[p]||0), 0)
+    : null;
+  ['sce','scr','scescr','sco','scorp'].forEach(p=>{
+    const denom = (combinedCreditReq!==null && selectedForColl.has(p)) ? combinedCreditReq : collReqs[p];
+    setVal(p+'_collateral_pct', denom? fmtPct(collAmounts[p]/denom) : '-');
+  });
 
   // summary table
   document.getElementById('sum_sce_req').textContent = fmt(sceReq)+' บาท';
@@ -3407,7 +3430,18 @@ function setCmStatus(msg, kind){
   el.className = 'bol-status' + (kind? ' '+kind : '');
 }
 
-const CM_PREFIX_BY_CODE = {SCE:'sce', SCR:'scr', SCO:'sco', SCORP:'scorp'};
+// "SCE/SCR" is a combined entity (one customer sold to under both SCE and
+// SCR together) and can appear in a CM report's own section header exactly
+// like the single-entity codes below - e.g. a boxed "SCE/SCR" at the top of
+// a section. Without an entry here that whole section was silently
+// discarded (its header line matched nothing, so no block ever got
+// started for it), forcing the person to notice the mismatch, pick
+// "SCE/SCR" by hand in the ชุดข้อมูล selector, and re-type everything
+// manually. "SCE-SCR" (hyphen instead of slash) is included too in case a
+// report variant prints it that way - both map to the same 'scescr' prefix
+// already used everywhere else in this form (scescr_code, scescr_affiliation,
+// CM_CLEAR_PREFIXES, etc.).
+const CM_PREFIX_BY_CODE = {SCE:'sce', SCR:'scr', 'SCE/SCR':'scescr', 'SCE-SCR':'scescr', SCO:'sco', SCORP:'scorp'};
 
 // Strip Thai tone/vowel-combining marks and any private-use-area glyph
 // (some CM exports encode a dropped tone mark as a font-specific PUA

@@ -2020,7 +2020,6 @@ function recalcAll(){
   const sceOrig = num('sce_orig_limit'), sceReq = num('sce_requested'), sceTotal = sceOrig+sceReq;
   setVal('sce_total', fmt(sceTotal));
   const sceColl = num('sce_collateral');
-  setVal('sce_collateral_pct', sceTotal? fmtPct(sceColl/sceTotal) : '-');
   // "sce_used" is stored as a negative (or zero) draw-down amount
   // (see formatUsedInput) - take the magnitude here so the over/remaining
   // math works regardless of how it was entered or auto-filled.
@@ -2035,7 +2034,6 @@ function recalcAll(){
   const scrOrig = num('scr_orig_limit'), scrReq = num('scr_requested'), scrTotal = scrOrig+scrReq;
   setVal('scr_total', fmt(scrTotal));
   const scrColl = num('scr_collateral');
-  setVal('scr_collateral_pct', scrTotal? fmtPct(scrColl/scrTotal) : '-');
   // "scr_used" is stored as a negative (or zero) draw-down amount
   // (see formatUsedInput) - take the magnitude here so the over/remaining
   // math works regardless of how it was entered or auto-filled.
@@ -2050,7 +2048,6 @@ function recalcAll(){
   const scescrOrig = num('scescr_orig_limit'), scescrReq = num('scescr_requested'), scescrTotal = scescrOrig+scescrReq;
   setVal('scescr_total', fmt(scescrTotal));
   const scescrColl = num('scescr_collateral');
-  setVal('scescr_collateral_pct', scescrTotal? fmtPct(scescrColl/scescrTotal) : '-');
   // "scescr_used" is stored as a negative (or zero) draw-down amount
   // (see formatUsedInput) - take the magnitude here so the over/remaining
   // math works regardless of how it was entered or auto-filled.
@@ -2065,7 +2062,6 @@ function recalcAll(){
   const scoOrig = num('sco_orig_limit'), scoReq = num('sco_requested'), scoTotal = scoOrig+scoReq;
   setVal('sco_total', fmt(scoTotal));
   const scoColl = num('sco_collateral');
-  setVal('sco_collateral_pct', scoTotal? fmtPct(scoColl/scoTotal) : '-');
   // "sco_used" is stored as a negative (or zero) draw-down amount
   // (see formatUsedInput) - take the magnitude here so the over/remaining
   // math works regardless of how it was entered or auto-filled.
@@ -2080,7 +2076,6 @@ function recalcAll(){
   const scorpOrig = num('scorp_orig_limit'), scorpReq = num('scorp_requested'), scorpTotal = scorpOrig+scorpReq;
   setVal('scorp_total', fmt(scorpTotal));
   const scorpColl = num('scorp_collateral');
-  setVal('scorp_collateral_pct', scorpTotal? fmtPct(scorpColl/scorpTotal) : '-');
   // "scorp_used" is stored as a negative (or zero) draw-down amount
   // (see formatUsedInput) - take the magnitude here so the over/remaining
   // math works regardless of how it was entered or auto-filled.
@@ -2090,6 +2085,29 @@ function recalcAll(){
   const scorpRemain = scorpRawRemain > 0 ? scorpRawRemain : 0;
   setVal('scorp_over', scorpOver? fmt(scorpOver,2) : '-');
   setVal('scorp_remaining', scorpRemain? fmt(scorpRemain,2) : '-');
+
+  // "หลักประกัน / วงเงินรวม (คำนวณอัตโนมัติ)" - normally each company's own
+  // ratio (its own หลักประกันใหม่ over its own วงเงินสินเชื่อรวม), but when
+  // this credit request actually spans more than one company - "จำนวนชุด
+  // ข้อมูลวงเงินสินเชื่อ" > 1, e.g. approving SCE and SCR together in the
+  // same request - the ratio for EACH of those companies is judged against
+  // the whole request's COMBINED วงเงินรวม (the sum of every selected
+  // company's own total) rather than each one in isolation, since the
+  // collateral is backing the multi-company request as a whole. Only the
+  // denominator changes this way; each company's own หลักประกันใหม่
+  // numerator still comes from what was actually typed into that company's
+  // own field. With only 1 company selected this reduces to exactly the
+  // previous per-company behavior (denominator = that company's own total).
+  const collTotals = {sce:sceTotal, scr:scrTotal, scescr:scescrTotal, sco:scoTotal, scorp:scorpTotal};
+  const collAmounts = {sce:sceColl, scr:scrColl, scescr:scescrColl, sco:scoColl, scorp:scorpColl};
+  const selectedForColl = getSelectedCompanies();
+  const combinedCreditTotal = selectedForColl.size > 1
+    ? Array.from(selectedForColl).reduce((sum,p)=> sum + (collTotals[p]||0), 0)
+    : null;
+  ['sce','scr','scescr','sco','scorp'].forEach(p=>{
+    const denom = (combinedCreditTotal!==null && selectedForColl.has(p)) ? combinedCreditTotal : collTotals[p];
+    setVal(p+'_collateral_pct', denom? fmtPct(collAmounts[p]/denom) : '-');
+  });
 
   // summary table
   document.getElementById('sum_sce_orig').textContent = fmt(sceOrig)+' บาท';
@@ -3436,7 +3454,18 @@ function setCmStatus(msg, kind){
   el.className = 'bol-status' + (kind? ' '+kind : '');
 }
 
-const CM_PREFIX_BY_CODE = {SCE:'sce', SCR:'scr', SCO:'sco', SCORP:'scorp'};
+// "SCE/SCR" is a combined entity (one customer sold to under both SCE and
+// SCR together) and can appear in a CM report's own section header exactly
+// like the single-entity codes below - e.g. a boxed "SCE/SCR" at the top of
+// a section. Without an entry here that whole section was silently
+// discarded (its header line matched nothing, so no block ever got
+// started for it), forcing the person to notice the mismatch, pick
+// "SCE/SCR" by hand in the ชุดข้อมูล selector, and re-type everything
+// manually. "SCE-SCR" (hyphen instead of slash) is included too in case a
+// report variant prints it that way - both map to the same 'scescr' prefix
+// already used everywhere else in this form (scescr_code, scescr_affiliation,
+// CM_CLEAR_PREFIXES, etc.).
+const CM_PREFIX_BY_CODE = {SCE:'sce', SCR:'scr', 'SCE/SCR':'scescr', 'SCE-SCR':'scescr', SCO:'sco', SCORP:'scorp'};
 
 // Strip Thai tone/vowel-combining marks and any private-use-area glyph
 // (some CM exports encode a dropped tone mark as a font-specific PUA
