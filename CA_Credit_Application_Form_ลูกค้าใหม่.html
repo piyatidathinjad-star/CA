@@ -60,6 +60,8 @@
   button.act.primary:hover{background:#690b3d;}
   button.act.danger{background:transparent;color:#ffd7d2;border:1px solid #ffd7d2;}
   button.act.danger:hover{background:rgba(255,255,255,.1);}
+  button.act#btnManual{color:#0d3d78;}
+  button.act#btnManual:hover{background:#e6eefb;}
 
   .wrap{max-width:1200px;margin:20px auto;padding:0 16px;}
   .print-table{width:100%;border-collapse:collapse;}
@@ -618,6 +620,7 @@
     <input type="file" id="fileDraft" accept="application/json" style="display:none;">
     <button class="act primary" id="btnExcel" type="button">ดาวน์โหลด Excel</button>
     <button class="act primary" id="btnPdf" type="button">พิมพ์ / บันทึกเป็น PDF</button>
+    <button class="act" id="btnManual" type="button" onclick="window.open('คู่มือการใช้งาน.html','_blank')">📖 คู่มือการใช้งาน</button>
   </div>
 </div>
 
