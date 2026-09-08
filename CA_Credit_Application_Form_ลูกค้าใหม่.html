@@ -528,6 +528,12 @@
 #pp30ModalRoot .crop-block .cap{font-size:21px; color:var(--ink-faint); margin-top:5px; text-align:center;}
 #pp30ModalRoot .crop-thumbs{display:flex; gap:10px;}
 #pp30ModalRoot .crop-thumbs .crop-block{flex:1;}
+#pp30ModalRoot .amount-crop-wide{margin-bottom:12px;}
+#pp30ModalRoot .amount-crop-wide img{cursor:zoom-in;}
+#pp30ZoomOverlay{display:none; position:fixed; inset:0; z-index:99999; background:rgba(15,20,30,0.92); align-items:center; justify-content:center; padding:24px; cursor:zoom-out;}
+#pp30ZoomOverlay.open{display:flex;}
+#pp30ZoomOverlay img{max-width:100%; max-height:100%; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.5); background:#fff;}
+#pp30ZoomOverlay .zoom-hint{position:absolute; top:18px; left:50%; transform:translateX(-50%); color:#fff; font-size:18px; background:rgba(0,0,0,0.4); padding:6px 16px; border-radius:20px;}
 #pp30ModalRoot .entry-cols{display:flex; flex-direction:column; gap:12px;}
 #pp30ModalRoot .entry-field label{display:block; font-size:21px; font-weight:700; color:var(--ink-muted); margin-bottom:5px;}
 #pp30ModalRoot .entry-field .unit{font-size:21px; color:var(--ink-faint); font-weight:500; margin-left:4px;}
@@ -979,8 +985,10 @@
          button that opens it must not be hidden by #cc_pp30_fields_wrap's
          display:none (see updatePP30BankVisibility()). Applying data from
          the assistant also auto-sets cc_has_pp30 to "มี" for the user. -->
-    <div class="visibility-toggle" style="margin-bottom:10px;">
+    <div class="visibility-toggle" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;">
       <button type="button" class="small-btn import-btn" id="btnOpenPp30Assistant" style="white-space:nowrap;">📁 เปิดผู้ช่วยกรอก ภ.พ.30 (จากไฟล์ PDF)</button>
+      <button type="button" class="small-btn import-btn" id="btnImportBankXlsx" style="white-space:nowrap;">📁 แนบไฟล์ Excel บัญชีธนาคาร (ดึงจากชีท "สรุปรวมทั้งหมด")</button>
+      <input type="file" id="bankXlsxFileInput" accept=".xlsx,.xls" style="display:none;">
     </div>
     <div class="grid cols2">
       <div class="field wide" id="cc_pp30_fields_wrap"><label class="req">ภ.พ.30 (ปี<input type="text" id="cc_pp30_year" value="69" style="width:40px;display:inline-block;text-align:center;border:1px solid #ccc;border-radius:4px;padding:1px 3px;font:inherit;color:var(--text);font-weight:600;">)</label>
@@ -4023,6 +4031,7 @@ document.addEventListener('DOMContentLoaded', init);
     </div>
   </div>
 </div>
+<div id="pp30ZoomOverlay"><span class="zoom-hint">แตะที่ใดก็ได้เพื่อปิด</span><img id="pp30ZoomImg" src="" alt="ภาพขยาย"></div>
 <script>
 (function(){
   "use strict";
@@ -4267,8 +4276,11 @@ document.addEventListener('DOMContentLoaded', init);
     var cb = cropCanvas(canvas, CHECKBOX_BOX, 1.0);
     // wider crop of the same area (plus header rows above) — shown to the user
     var cbDisplay = cropCanvas(canvas, CHECKBOX_DISPLAY_BOX, 1.0);
-    // amount table crop (items 1 / 4 / 6) — wider, for on-screen comparison
-    var am = cropCanvas(canvas, AMOUNT_BOX, 1.15);
+    // amount table crop (items 1 / 4 / 6) — wider, for on-screen comparison.
+    // Upscaled well beyond the display size so the crop stays sharp even when
+    // shown full-width (see .amount-crop-wide) — the source PDF's own text
+    // gets genuinely bigger/clearer on screen, not just stretched.
+    var am = cropCanvas(canvas, AMOUNT_BOX, 2.2);
     // narrow numbers-only crop, higher-res, feeds the OCR pass
     var amOcr = cropCanvas(canvas, AMOUNT_OCR_BOX, 2.0);
 
@@ -4604,6 +4616,10 @@ document.addEventListener('DOMContentLoaded', init);
           '<div class="pageno">หน้า ' + p.pageNum + ' <span class="num">(PDF page ' + p.pageNum + ')</span></div>' +
           '<span class="status-pill ' + meta.pill + '">' + meta.label + '</span>' +
         '</div>' +
+        '<div class="crop-block amount-crop-wide">' +
+          '<img src="'+p.amountUrl+'" alt="ตารางยอดขาย/ยอดซื้อ" />' +
+          '<div class="cap">ข้อ 1 / 4 / 6 — เทียบตัวเลขแล้วกรอกด้านขวา (แตะที่ภาพเพื่อซูมเต็มจอ)</div>' +
+        '</div>' +
         '<div class="rr-body">' +
           '<div>' +
             '<div class="rr-when" style="margin-bottom:10px;">' +
@@ -4613,10 +4629,6 @@ document.addEventListener('DOMContentLoaded', init);
             '</div>' +
             '<div class="crop-thumbs">' +
               '<div class="crop-block"><img src="'+p.checkboxUrl+'" alt="ช่องเดือน/ปี" /><div class="cap">ช่องเดือน / พ.ศ.</div></div>' +
-            '</div>' +
-            '<div class="crop-block" style="margin-top:10px;">' +
-              '<img src="'+p.amountUrl+'" alt="ตารางยอดขาย/ยอดซื้อ" />' +
-              '<div class="cap">ข้อ 1 / 4 / 6 — เทียบตัวเลขแล้วกรอกด้านขวา</div>' +
             '</div>' +
           '</div>' +
           '<div class="entry-cols">' +
@@ -5443,6 +5455,164 @@ document.addEventListener('DOMContentLoaded', init);
       if(e.target === overlay) overlay.classList.remove('open');
     });
   }
+
+  // Tap-to-zoom on the "ข้อ 1/4/6" verification crop: opens the same image
+  // full-screen so the source PDF's numbers are easy to read even on a
+  // small screen. Delegated on reviewList since rows are re-rendered often.
+  var zoomOverlay = document.getElementById('pp30ZoomOverlay');
+  var zoomImg = document.getElementById('pp30ZoomImg');
+  var reviewListEl = document.getElementById('reviewList');
+  if(reviewListEl && zoomOverlay && zoomImg){
+    reviewListEl.addEventListener('click', function(e){
+      var img = e.target.closest && e.target.closest('.amount-crop-wide img');
+      if(!img) return;
+      zoomImg.src = img.src;
+      zoomOverlay.classList.add('open');
+    });
+  }
+  if(zoomOverlay){
+    zoomOverlay.addEventListener('click', function(){ zoomOverlay.classList.remove('open'); });
+  }
+})();
+</script>
+<script>
+// "แนบไฟล์ Excel บัญชีธนาคาร" - client-side only (SheetJS, already loaded
+// as the xlsx.full.min.js <script> in <head>), no data leaves the browser.
+// Reads ONLY the "สรุปรวมทั้งหมด" sheet of the attached workbook (the
+// per-month sheets are ignored) and fills the ธนาคาร / ประเภทของเงินฝาก /
+// ชื่อบัญชี / เลขที่บัญชี / สรุปเงินฝาก-ถอน fields above, mirroring the
+// fixed layout produced by this team's own "แปลงรายการเดินบัญชีเป็น Excel"
+// workflow: ชื่อบัญชี/ธนาคาร/บัญชีเลขที่/ประเภทบัญชี in the header block,
+// then a เดือน/รวมฝากเงิน/รวมถอนเงิน/ยอดคงเหลือปลายงวด table ending in a
+// "เฉลี่ยเดือนละ" row.
+(function(){
+  var openBtn = document.getElementById('btnImportBankXlsx');
+  var fileInput = document.getElementById('bankXlsxFileInput');
+  if(!openBtn || !fileInput) return;
+  openBtn.addEventListener('click', function(){ fileInput.click(); });
+
+  function norm(v){ return (v===null||v===undefined) ? '' : String(v).trim(); }
+  function toMB(n){
+    if(n===null || n===undefined || n==='' || isNaN(n)) return null;
+    return (Number(n)/1000000).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  var DEPOSIT_TYPE_MAP = {'O/D':'กระแสรายวัน (O/D)', 'ออมทรัพย์':'ออมทรัพย์', 'กระแสรายวัน':'กระแสรายวัน', 'ฝากประจำ':'ฝากประจำ'};
+
+  // Match the short bank name printed in the statement (e.g. "กสิกรไทย")
+  // against the names already offered in #bankNameList, so the field ends
+  // up consistent with this form's own suggestion list - falls back to a
+  // plain "ธนาคาร<name>" guess if no existing entry matches.
+  function findBankFullName(shortName){
+    var s = norm(shortName);
+    if(!s) return '';
+    var dl = document.getElementById('bankNameList');
+    if(dl){
+      var opts = dl.querySelectorAll('option');
+      for(var i=0;i<opts.length;i++){
+        var v = opts[i].getAttribute('value') || '';
+        if(v.indexOf(s) !== -1) return v;
+      }
+    }
+    return s.indexOf('ธนาคาร')===0 ? s : ('ธนาคาร'+s);
+  }
+
+  // Walk the "สรุปรวมทั้งหมด" sheet as a plain array-of-rows and pick out
+  // each label by scanning column A (and, for ประเภทบัญชี/มียอดเงินคงเหลือ,
+  // the rest of the row) rather than hardcoding row/column numbers - this
+  // keeps it working even if a future export adds/removes a row above.
+  function extractFromSheetRows(rows){
+    var bankName='', accountName='', accountNo='', accountType='', asOfDate='', currentBalance=null;
+    var avgDeposit=null, avgWithdraw=null, avgEndBalance=null;
+    var headerRowIdx=-1;
+    for(var i=0;i<rows.length;i++){
+      var row = rows[i] || [];
+      var a = norm(row[0]);
+      if(a === 'ชื่อบัญชี') accountName = norm(row[1]);
+      else if(a === 'ธนาคาร') bankName = norm(row[1]);
+      else if(a === 'บัญชีเลขที่'){
+        accountNo = norm(row[1]);
+        for(var c=2;c<row.length-1;c++){
+          if(norm(row[c]) === 'ประเภทบัญชี'){ accountType = norm(row[c+1]); break; }
+        }
+      }
+      for(var c2=0;c2<row.length-1;c2++){
+        if(norm(row[c2]) === 'มียอดเงินคงเหลือ'){
+          currentBalance = row[c2+1];
+          for(var c3=0;c3<row.length;c3++){
+            var v = norm(row[c3]);
+            if(/\d{1,2}\/\d{1,2}\/\d{2,4}/.test(v)){ asOfDate = v.replace(/^ณ\.?\s*/,''); break; }
+          }
+        }
+      }
+      if(a === 'เดือน') headerRowIdx = i;
+    }
+    if(headerRowIdx>=0){
+      var header = (rows[headerRowIdx]||[]).map(norm);
+      var depIdx=-1, wdIdx=-1, balIdx=-1;
+      for(var h=0;h<header.length;h++){
+        if(header[h].indexOf('รวมฝากเงิน')===0) depIdx=h;
+        else if(header[h].indexOf('รวมถอนเงิน')===0) wdIdx=h;
+        else if(header[h].indexOf('ยอดคงเหลือปลายงวด')===0) balIdx=h;
+      }
+      for(var j=headerRowIdx+1;j<rows.length;j++){
+        var row2 = rows[j] || [];
+        if(norm(row2[0]) === 'เฉลี่ยเดือนละ'){
+          avgDeposit = depIdx>=0 ? row2[depIdx] : null;
+          avgWithdraw = wdIdx>=0 ? row2[wdIdx] : null;
+          avgEndBalance = balIdx>=0 ? row2[balIdx] : null;
+          break;
+        }
+      }
+    }
+    return {bankName:bankName, accountName:accountName, accountNo:accountNo, accountType:accountType,
+      asOfDate:asOfDate, currentBalance:currentBalance, avgDeposit:avgDeposit, avgWithdraw:avgWithdraw, avgEndBalance:avgEndBalance};
+  }
+
+  fileInput.addEventListener('change', function(){
+    var file = fileInput.files && fileInput.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e){
+      try{
+        var data = new Uint8Array(e.target.result);
+        var wb = XLSX.read(data, {type:'array'});
+        var sheetName = wb.SheetNames.filter(function(n){ return norm(n) === 'สรุปรวมทั้งหมด'; })[0];
+        if(!sheetName){
+          alert('ไม่พบชีท "สรุปรวมทั้งหมด" ในไฟล์ Excel ที่แนบ กรุณาตรวจสอบไฟล์อีกครั้ง');
+          return;
+        }
+        var ws = wb.Sheets[sheetName];
+        var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
+        var ex = extractFromSheetRows(rows);
+
+        if(ex.bankName) setVal('cc_bank_name', findBankFullName(ex.bankName));
+        if(ex.accountType) setVal('cc_bank_acc_type', DEPOSIT_TYPE_MAP[ex.accountType] || ex.accountType);
+        if(ex.accountName) setVal('cc_bank_acc_name', ex.accountName);
+        if(ex.accountNo) setVal('cc_bank_acc_no', ex.accountNo);
+
+        var depTxt = toMB(ex.avgDeposit), wdTxt = toMB(ex.avgWithdraw), balAvgTxt = toMB(ex.avgEndBalance), curTxt = toMB(ex.currentBalance);
+        var parts = [];
+        parts.push('เงินฝากเข้าเฉลี่ยเดือนละ ' + (depTxt!==null?depTxt:'-') + ' ลบ.');
+        parts.push('ถอนออกเฉลี่ยเดือนละ ' + (wdTxt!==null?wdTxt:'-') + ' ลบ.');
+        parts.push('ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ ' + (balAvgTxt!==null?balAvgTxt:'-') + ' ลบ.');
+        if(ex.asOfDate || curTxt!==null){
+          parts.push('ณ. ' + (ex.asOfDate||'-') + ' มียอดเงินคงเหลือ ' + (curTxt!==null?curTxt:'-') + ' ลบ.');
+        }
+        setVal('cc_bank_flow_detail', parts.join(' '));
+
+        setVal('cc_has_bank', 'yes');
+        if(typeof updatePP30BankVisibility === 'function') updatePP30BankVisibility();
+
+        alert('นำข้อมูลบัญชีธนาคารจากไฟล์ Excel (ชีท "สรุปรวมทั้งหมด") ไปกรอกในฟอร์มแล้ว กรุณาตรวจสอบความถูกต้องอีกครั้ง');
+      }catch(err){
+        console.error(err);
+        alert('ไม่สามารถอ่านไฟล์ Excel นี้ได้ กรุณาตรวจสอบว่าเป็นไฟล์ .xlsx/.xls ที่ถูกต้อง');
+      } finally {
+        fileInput.value = '';
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
 })();
 </script>
 </body>
