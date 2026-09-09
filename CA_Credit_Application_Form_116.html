@@ -202,6 +202,9 @@
   .exec-reject-label{display:none;}
   .exec-reject-blank{display:none;}
   .sync-btn{font-size:13pt;color:var(--brand);background:none;border:1px solid var(--brand);border-radius:4px;padding:2px 6px;cursor:pointer;margin-left:auto;}
+  .bank-account-extra{margin-top:16px;padding-top:14px;border-top:1px dashed var(--border);}
+  .bank-account-block-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .bank-account-block-title{font-size:14pt;font-weight:700;color:var(--brand);}
   .sig-line{margin-top:14px;font-size:16pt;}
   .sig-line input{margin-top:4px;}
   .sig-standalone input{max-width:340px;}
@@ -1133,8 +1136,8 @@
          the assistant also auto-sets has_pp30 to "มี" for the user. -->
     <div class="visibility-toggle" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;">
       <button type="button" class="small-btn import-btn" id="btnOpenPp30Assistant" style="white-space:nowrap;">📁 เปิดผู้ช่วยกรอก ภ.พ.30 (จากไฟล์ PDF)</button>
-      <button type="button" class="small-btn import-btn" id="btnImportBankXlsx" style="white-space:nowrap;">📁 แนบไฟล์ Excel บัญชีธนาคาร (ดึงจากชีท "สรุปรวมทั้งหมด")</button>
-      <input type="file" id="bankXlsxFileInput" accept=".xlsx,.xls" style="display:none;">
+      <button type="button" class="small-btn import-btn" id="btnImportBankXlsx" style="white-space:nowrap;">📁 แนบไฟล์ Excel บัญชีธนาคาร (สูงสุด 3 ไฟล์ ดึงจากชีท "สรุปรวมทั้งหมด")</button>
+      <input type="file" id="bankXlsxFileInput" accept=".xlsx,.xls" multiple style="display:none;">
     </div>
     <div class="grid cols4">
       <div class="field wide" id="pp30_fields_wrap"><label class="req">ภ.พ.30 (ปี <input type="text" id="pp30_year" class="req-input" inputmode="numeric" maxlength="2" placeholder="69" style="max-width:40px; text-align:center; padding:2px 4px; font-weight:600;"> )</label>
@@ -1149,22 +1152,76 @@
 
       <!-- ธนาคาร now gets its own full-width row (bank legal names run
            long, e.g. "ธนาคารทหารไทยธนชาต จำกัด (มหาชน)") with the other
-           3 fields moved to a second row underneath it. -->
-      <div class="bank-fields-wrap" data-show="grid" style="grid-column:1/-1;display:grid;grid-template-columns:1fr;gap:12px 16px;">
-        <div class="field"><label>ธนาคาร</label><input type="text" id="bank_name" list="thaiBankList" placeholder="เลือกหรือพิมพ์ค้นหาธนาคาร"></div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 16px;">
-          <div class="field"><label>ประเภทของเงินฝาก</label><input type="text" id="bank_account_type" list="depositTypeList" placeholder="เลือกหรือพิมพ์ค้นหาประเภท"></div>
-          <div class="field"><label>ชื่อบัญชี</label><input type="text" id="bank_account_name" placeholder="-"></div>
-          <div class="field"><label>เลขที่บัญชี</label><input type="text" id="bank_account_no" placeholder="-"></div>
-        </div>
-      </div>
+           3 fields moved to a second row underneath it. Supports up to 3
+           bank accounts (e.g. up to 3 statement-Excel files attached at
+           once via "แนบไฟล์ Excel บัญชีธนาคาร") - accounts 2 and 3 stay
+           hidden until a file fills them in; each can be removed again with
+           its own "✕ ลบบัญชีนี้" (screen-only, print-hidden like the rest
+           of .visibility-toggle). -->
+      <div class="bank-fields-wrap" id="bankFieldsOuter" style="grid-column:1/-1;">
 
-      <div class="field wide bank-fields-wrap"><label>สรุปเงินฝาก-ถอน</label>
-        <select id="bank_summary_template" class="tmpl-picker" style="margin-bottom:6px;">
-          <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
-          <option value='เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.'>ตัวอย่าง — สรุปเงินฝาก-ถอนบัญชีธนาคาร</option>
-        </select>
-        <textarea class="req-input" id="bank_summary" rows="2"></textarea>
+        <div class="bank-account-block" id="bankBlock1">
+          <div style="display:grid;grid-template-columns:1fr;gap:12px 16px;">
+            <div class="field"><label>ธนาคาร</label><input type="text" id="bank_name" list="thaiBankList" placeholder="เลือกหรือพิมพ์ค้นหาธนาคาร"></div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 16px;">
+              <div class="field"><label>ประเภทของเงินฝาก</label><input type="text" id="bank_account_type" list="depositTypeList" placeholder="เลือกหรือพิมพ์ค้นหาประเภท"></div>
+              <div class="field"><label>ชื่อบัญชี</label><input type="text" id="bank_account_name" placeholder="-"></div>
+              <div class="field"><label>เลขที่บัญชี</label><input type="text" id="bank_account_no" placeholder="-"></div>
+            </div>
+          </div>
+          <div class="field wide" style="margin-top:12px;"><label>สรุปเงินฝาก-ถอน</label>
+            <select id="bank_summary_template" class="tmpl-picker" style="margin-bottom:6px;">
+              <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
+              <option value='เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.'>ตัวอย่าง — สรุปเงินฝาก-ถอนบัญชีธนาคาร</option>
+            </select>
+            <textarea class="req-input" id="bank_summary" rows="2"></textarea>
+          </div>
+        </div>
+
+        <div class="bank-account-block bank-account-extra" id="bankBlock2" data-active="0" style="display:none;">
+          <div class="bank-account-block-head visibility-toggle">
+            <span class="bank-account-block-title">บัญชีธนาคารที่ 2</span>
+            <button type="button" class="small-btn remove" data-target="2">✕ ลบบัญชีนี้</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr;gap:12px 16px;">
+            <div class="field"><label>ธนาคาร</label><input type="text" id="bank_name_2" list="thaiBankList" placeholder="เลือกหรือพิมพ์ค้นหาธนาคาร"></div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 16px;">
+              <div class="field"><label>ประเภทของเงินฝาก</label><input type="text" id="bank_account_type_2" list="depositTypeList" placeholder="เลือกหรือพิมพ์ค้นหาประเภท"></div>
+              <div class="field"><label>ชื่อบัญชี</label><input type="text" id="bank_account_name_2" placeholder="-"></div>
+              <div class="field"><label>เลขที่บัญชี</label><input type="text" id="bank_account_no_2" placeholder="-"></div>
+            </div>
+          </div>
+          <div class="field wide" style="margin-top:12px;"><label>สรุปเงินฝาก-ถอน</label>
+            <select id="bank_summary_template_2" class="tmpl-picker" style="margin-bottom:6px;">
+              <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
+              <option value='เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.'>ตัวอย่าง — สรุปเงินฝาก-ถอนบัญชีธนาคาร</option>
+            </select>
+            <textarea class="req-input" id="bank_summary_2" rows="2"></textarea>
+          </div>
+        </div>
+
+        <div class="bank-account-block bank-account-extra" id="bankBlock3" data-active="0" style="display:none;">
+          <div class="bank-account-block-head visibility-toggle">
+            <span class="bank-account-block-title">บัญชีธนาคารที่ 3</span>
+            <button type="button" class="small-btn remove" data-target="3">✕ ลบบัญชีนี้</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr;gap:12px 16px;">
+            <div class="field"><label>ธนาคาร</label><input type="text" id="bank_name_3" list="thaiBankList" placeholder="เลือกหรือพิมพ์ค้นหาธนาคาร"></div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 16px;">
+              <div class="field"><label>ประเภทของเงินฝาก</label><input type="text" id="bank_account_type_3" list="depositTypeList" placeholder="เลือกหรือพิมพ์ค้นหาประเภท"></div>
+              <div class="field"><label>ชื่อบัญชี</label><input type="text" id="bank_account_name_3" placeholder="-"></div>
+              <div class="field"><label>เลขที่บัญชี</label><input type="text" id="bank_account_no_3" placeholder="-"></div>
+            </div>
+          </div>
+          <div class="field wide" style="margin-top:12px;"><label>สรุปเงินฝาก-ถอน</label>
+            <select id="bank_summary_template_3" class="tmpl-picker" style="margin-bottom:6px;">
+              <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
+              <option value='เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.'>ตัวอย่าง — สรุปเงินฝาก-ถอนบัญชีธนาคาร</option>
+            </select>
+            <textarea class="req-input" id="bank_summary_3" rows="2"></textarea>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -2013,12 +2070,17 @@ function updatePP30BankVisibility(){
   const showBank = getVal('has_bank') !== 'no';
   const pp30El = document.getElementById('pp30_fields_wrap');
   if(pp30El) pp30El.style.display = showPP30 ? '' : 'none';
-  document.querySelectorAll('.bank-fields-wrap').forEach(el=>{
-    // Restore each element's own "shown" display value rather than just
-    // clearing the inline style - the 4-field sub-grid row below needs
-    // display:grid specifically (clearing to '' would fall back to the
-    // browser default of block and collapse its column layout).
-    el.style.display = showBank ? (el.dataset.show || '') : 'none';
+  const bankEl = document.getElementById('bankFieldsOuter');
+  if(bankEl) bankEl.style.display = showBank ? '' : 'none';
+  // Bank account 2/3 stay hidden even while the section itself is shown,
+  // unless a file has already filled one in (or the user re-adds it) -
+  // see the "✕ ลบบัญชีนี้" handler and the Excel-import code below, both
+  // of which flip data-active to track this independently of showBank.
+  [2,3].forEach(function(n){
+    const block = document.getElementById('bankBlock'+n);
+    if(!block) return;
+    const active = block.dataset.active === '1';
+    block.style.display = (showBank && active) ? '' : 'none';
   });
 }
 
@@ -2505,9 +2567,19 @@ async function exportExcel(){
     wideFieldRow('ภ.พ.30', getVal('pp30_summary'), {height:24});
   }
   if(getVal('has_bank') !== 'no'){
-    fieldRow([{label:'ธนาคาร', value:getVal('bank_name')||'-'}, {label:'ประเภทของเงินฝาก', value:getVal('bank_account_type')||'-'}, {label:'ชื่อบัญชี', value:getVal('bank_account_name')||'-'}]);
-    fieldRow([{label:'เลขที่บัญชี', value:getVal('bank_account_no')||'-'}]);
-    wideFieldRow('สรุปเงินฝาก-ถอน', getVal('bank_summary'), {height:24});
+    // Account 1 always exports; accounts 2/3 only when the user actually
+    // filled one in (mirrors bankBlockN.dataset.active on screen).
+    [1,2,3].forEach(function(idx){
+      if(idx>1){
+        var block = document.getElementById('bankBlock'+idx);
+        if(!block || block.dataset.active !== '1') return;
+        mergeRow('บัญชีธนาคารที่ ' + idx, styleSubHeader, 16);
+      }
+      var suf = idx===1 ? '' : ('_'+idx);
+      fieldRow([{label:'ธนาคาร', value:getVal('bank_name'+suf)||'-'}, {label:'ประเภทของเงินฝาก', value:getVal('bank_account_type'+suf)||'-'}, {label:'ชื่อบัญชี', value:getVal('bank_account_name'+suf)||'-'}]);
+      fieldRow([{label:'เลขที่บัญชี', value:getVal('bank_account_no'+suf)||'-'}]);
+      wideFieldRow('สรุปเงินฝาก-ถอน', getVal('bank_summary'+suf), {height:24});
+    });
   }
   r++;
 
@@ -4019,6 +4091,16 @@ function init(){
     const v = e.target.value;
     if(v) setVal('bank_summary', v);
     e.target.selectedIndex = 0;
+  });
+  // Same one-shot template pickers for bank accounts 2 and 3.
+  [2,3].forEach((n)=>{
+    const sel = document.getElementById('bank_summary_template_'+n);
+    if(!sel) return;
+    sel.addEventListener('change', (e)=>{
+      const v = e.target.value;
+      if(v) setVal('bank_summary_'+n, v);
+      e.target.selectedIndex = 0;
+    });
   });
   // "มี ภ.พ.30 หรือไม่" / "มีบัญชีธนาคารหรือไม่" - show/hide the matching
   // half of the card above.
@@ -5746,50 +5828,103 @@ document.addEventListener('DOMContentLoaded', init);
       asOfDate:asOfDate, currentBalance:currentBalance, avgDeposit:avgDeposit, avgWithdraw:avgWithdraw, avgEndBalance:avgEndBalance};
   }
 
+  // Bank account field ids: account 1 keeps the original (unsuffixed) ids
+  // for backward compatibility with existing saved .json drafts; accounts
+  // 2/3 use the _2/_3 suffix.
+  function idFor(base, idx){ return idx===1 ? base : (base+'_'+idx); }
+
+  function activateBlock(idx){
+    if(idx===1) return; // account 1 is always shown whenever has_bank=yes
+    var block = document.getElementById('bankBlock'+idx);
+    if(block){ block.dataset.active = '1'; block.style.display = ''; }
+  }
+
+  function fillBankBlock(idx, ex){
+    if(ex.bankName) setVal(idFor('bank_name',idx), findBankFullName(ex.bankName));
+    if(ex.accountType) setVal(idFor('bank_account_type',idx), DEPOSIT_TYPE_MAP[ex.accountType] || ex.accountType);
+    if(ex.accountName) setVal(idFor('bank_account_name',idx), ex.accountName);
+    if(ex.accountNo) setVal(idFor('bank_account_no',idx), ex.accountNo);
+
+    var depTxt = toMB(ex.avgDeposit), wdTxt = toMB(ex.avgWithdraw), balAvgTxt = toMB(ex.avgEndBalance), curTxt = toMB(ex.currentBalance);
+    var parts = [];
+    parts.push('เงินฝากเข้าเฉลี่ยเดือนละ ' + (depTxt!==null?depTxt:'-') + ' ลบ.');
+    parts.push('ถอนออกเฉลี่ยเดือนละ ' + (wdTxt!==null?wdTxt:'-') + ' ลบ.');
+    parts.push('ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ ' + (balAvgTxt!==null?balAvgTxt:'-') + ' ลบ.');
+    if(ex.asOfDate || curTxt!==null){
+      parts.push('ณ. ' + (ex.asOfDate||'-') + ' มียอดเงินคงเหลือ ' + (curTxt!==null?curTxt:'-') + ' ลบ.');
+    }
+    setVal(idFor('bank_summary',idx), parts.join(' '));
+    activateBlock(idx);
+  }
+
+  // Reads one workbook and resolves with either {ex} on success or
+  // {error, fileName} on failure - never rejects, so Promise.all below
+  // always waits for every file regardless of individual failures.
+  function readOneBankFile(file){
+    return new Promise(function(resolve){
+      var reader = new FileReader();
+      reader.onload = function(e){
+        try{
+          var data = new Uint8Array(e.target.result);
+          var wb = XLSX.read(data, {type:'array'});
+          var sheetName = wb.SheetNames.filter(function(n){ return norm(n) === 'สรุปรวมทั้งหมด'; })[0];
+          if(!sheetName){ resolve({error:'nosheet', fileName:file.name}); return; }
+          var ws = wb.Sheets[sheetName];
+          var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
+          resolve({ex:extractFromSheetRows(rows), fileName:file.name});
+        }catch(err){
+          console.error(err);
+          resolve({error:'parse', fileName:file.name});
+        }
+      };
+      reader.onerror = function(){ resolve({error:'read', fileName:file.name}); };
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  var MAX_BANK_FILES = 3;
+
   fileInput.addEventListener('change', function(){
-    var file = fileInput.files && fileInput.files[0];
-    if(!file) return;
-    var reader = new FileReader();
-    reader.onload = function(e){
-      try{
-        var data = new Uint8Array(e.target.result);
-        var wb = XLSX.read(data, {type:'array'});
-        var sheetName = wb.SheetNames.filter(function(n){ return norm(n) === 'สรุปรวมทั้งหมด'; })[0];
-        if(!sheetName){
-          alert('ไม่พบชีท "สรุปรวมทั้งหมด" ในไฟล์ Excel ที่แนบ กรุณาตรวจสอบไฟล์อีกครั้ง');
-          return;
-        }
-        var ws = wb.Sheets[sheetName];
-        var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
-        var ex = extractFromSheetRows(rows);
-
-        if(ex.bankName) setVal('bank_name', findBankFullName(ex.bankName));
-        if(ex.accountType) setVal('bank_account_type', DEPOSIT_TYPE_MAP[ex.accountType] || ex.accountType);
-        if(ex.accountName) setVal('bank_account_name', ex.accountName);
-        if(ex.accountNo) setVal('bank_account_no', ex.accountNo);
-
-        var depTxt = toMB(ex.avgDeposit), wdTxt = toMB(ex.avgWithdraw), balAvgTxt = toMB(ex.avgEndBalance), curTxt = toMB(ex.currentBalance);
-        var parts = [];
-        parts.push('เงินฝากเข้าเฉลี่ยเดือนละ ' + (depTxt!==null?depTxt:'-') + ' ลบ.');
-        parts.push('ถอนออกเฉลี่ยเดือนละ ' + (wdTxt!==null?wdTxt:'-') + ' ลบ.');
-        parts.push('ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ ' + (balAvgTxt!==null?balAvgTxt:'-') + ' ลบ.');
-        if(ex.asOfDate || curTxt!==null){
-          parts.push('ณ. ' + (ex.asOfDate||'-') + ' มียอดเงินคงเหลือ ' + (curTxt!==null?curTxt:'-') + ' ลบ.');
-        }
-        setVal('bank_summary', parts.join(' '));
-
+    var files = Array.prototype.slice.call(fileInput.files || []);
+    fileInput.value = '';
+    if(!files.length) return;
+    if(files.length > MAX_BANK_FILES){
+      alert('แนบไฟล์ Excel บัญชีธนาคารได้สูงสุด ' + MAX_BANK_FILES + ' ไฟล์ต่อครั้ง — ระบบจะใช้ ' + MAX_BANK_FILES + ' ไฟล์แรกที่เลือกเท่านั้น');
+      files = files.slice(0, MAX_BANK_FILES);
+    }
+    Promise.all(files.map(readOneBankFile)).then(function(results){
+      var okCount = 0, badFiles = [];
+      results.forEach(function(res, i){
+        var idx = i+1;
+        if(res.error === 'nosheet'){ badFiles.push(res.fileName + ' (ไม่พบชีท "สรุปรวมทั้งหมด")'); return; }
+        if(res.error){ badFiles.push(res.fileName + ' (อ่านไฟล์ไม่สำเร็จ)'); return; }
+        fillBankBlock(idx, res.ex);
+        okCount++;
+      });
+      if(okCount>0){
         setVal('has_bank', 'yes');
         if(typeof updatePP30BankVisibility === 'function') updatePP30BankVisibility();
-
-        alert('นำข้อมูลบัญชีธนาคารจากไฟล์ Excel (ชีท "สรุปรวมทั้งหมด") ไปกรอกในฟอร์มแล้ว กรุณาตรวจสอบความถูกต้องอีกครั้ง');
-      }catch(err){
-        console.error(err);
-        alert('ไม่สามารถอ่านไฟล์ Excel นี้ได้ กรุณาตรวจสอบว่าเป็นไฟล์ .xlsx/.xls ที่ถูกต้อง');
-      } finally {
-        fileInput.value = '';
       }
-    };
-    reader.readAsArrayBuffer(file);
+      var msg = okCount>0 ? ('นำข้อมูลบัญชีธนาคารจากไฟล์ Excel ไปกรอกในฟอร์มแล้ว (' + okCount + ' บัญชี) กรุณาตรวจสอบความถูกต้องอีกครั้ง') : '';
+      if(badFiles.length){
+        msg += (msg ? '\n\n' : '') + 'ไฟล์ที่นำเข้าไม่สำเร็จ:\n' + badFiles.join('\n');
+      }
+      if(msg) alert(msg);
+    });
+  });
+
+  // "✕ ลบบัญชีนี้" on accounts 2/3 - clears that block's own fields and
+  // hides it again (account 1 has no remove button; it's always shown
+  // whenever has_bank=yes).
+  document.querySelectorAll('.bank-account-extra .small-btn.remove').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var n = btn.getAttribute('data-target');
+      var block = document.getElementById('bankBlock'+n);
+      if(!block) return;
+      block.querySelectorAll('input[type=text], textarea').forEach(function(el){ el.value = ''; });
+      block.dataset.active = '0';
+      block.style.display = 'none';
+    });
   });
 })();
 </script>
