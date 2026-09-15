@@ -3,14 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Credit Application - พิจารณาขอเครดิต (ลูกค้าใหม่) | Sangchai Group</title>
+<title>Credit Application - พิจารณาทบทวนวงเงินเครดิต | Sangchai Group</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<!-- Used only by the embedded "ผู้ช่วยกรอก ภ.พ.30" modal (see #pp30ModalOverlay
-     near the end of the body) - OCR fallback for scanned PDFs, and its own
-     Excel/PDF export buttons. It reuses the pdf.js copy loaded above rather
-     than loading its own. -->
+<!-- Used only as a fallback when a Comment(CM) PDF pastes its "ยอดขาย"
+     table in as a picture instead of real text (see extractCmData) - reads
+     the numbers from the image via OCR so the purchase-history table can
+     still be filled in automatically. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/7.0.0/tesseract.min.js"></script>
+<!-- Used only by the embedded "ผู้ช่วยกรอก ภ.พ.30" modal (see #pp30ModalOverlay
+     near the end of the body) for its Excel/PDF export buttons. pdf.js and
+     tesseract.js above are shared with that modal too - it reuses these same
+     copies rather than loading its own. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
 <!-- Used only to read a Word (.docx) file attached to the Comment(CM)
@@ -23,9 +27,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
-    --brand:#e91e63;
-    --brand-dark:#880e4f;
-    --brand-light:#fce4ec;
+    --brand:#1565c0;
+    --brand-dark:#0d3d78;
+    --brand-light:#e6eefb;
     --red:#c0392b;
     --red-bg:#fdecea;
     --gray-bg:#f3f4f6;
@@ -53,7 +57,7 @@
     box-shadow:0 2px 8px rgba(0,0,0,.2);
   }
   .topbar h1{font-size:17pt;margin:0;font-weight:600;}
-  .topbar .sub{font-size:13pt;color:#f8bbd0;margin-top:2px;}
+  .topbar .sub{font-size:13pt;color:#bcd6f0;margin-top:2px;}
   .btns{display:flex;gap:8px;flex-wrap:wrap;}
   button.act{
     background:#fff;color:var(--brand-dark);border:none;border-radius:6px;
@@ -62,11 +66,9 @@
   }
   button.act:hover{background:var(--brand-light);}
   button.act.primary{background:var(--brand);color:#fff;}
-  button.act.primary:hover{background:#690b3d;}
+  button.act.primary:hover{background:#0a2e5c;}
   button.act.danger{background:transparent;color:#ffd7d2;border:1px solid #ffd7d2;}
   button.act.danger:hover{background:rgba(255,255,255,.1);}
-  button.act#btnManual{color:#0d3d78;}
-  button.act#btnManual:hover{background:#e6eefb;}
 
   .wrap{max-width:1200px;margin:20px auto;padding:0 16px;}
   .print-table{width:100%;border-collapse:collapse;}
@@ -119,6 +121,7 @@
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px 16px;}
   .grid.cols2{grid-template-columns:repeat(2,1fr);}
   .grid.cols3{grid-template-columns:repeat(3,1fr);}
+  .grid.cols4{grid-template-columns:repeat(4,1fr);}
   .field{display:flex;flex-direction:column;gap:4px;}
   .field.wide{grid-column:1/-1;}
   label{font-size:16pt;font-weight:600;color:var(--text);}
@@ -177,6 +180,11 @@
     border-radius:5px;padding:4px 10px;font-size:14pt;cursor:pointer;
   }
   .small-btn.remove{background:#fdecea;color:var(--red);border-color:#f1b6ae;}
+  /* "เลือกไฟล์ BOL/Comment PDF" and their "ล้างข้อมูล" buttons - smaller,
+     matching text size (14px) than the default .small-btn 14pt, and the
+     clear buttons intentionally stay the same blue/outline look as the
+     choose-file button next to them instead of the red .remove style
+     (still used elsewhere, e.g. the history table's "ลบ" row button). */
   .import-btn{font-size:14px;}
 
   .summary-table{width:100%;border-collapse:collapse;font-size:16pt;margin:10px 0;}
@@ -188,6 +196,8 @@
   @media (max-width:800px){.approval-grid{grid-template-columns:1fr;}}
   .approval-outer{border:1px solid var(--border);border-radius:8px;padding:14px;}
   .approval-cell h4{margin:0 0 10px;font-size:17pt;color:var(--brand-dark);}
+  .approval-header-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+  .approval-header-row h4{margin:0;}
   .approval-cell-right{border-left:1px solid var(--border);padding-left:16px;}
   .opt{margin-bottom:10px;}
   .opt-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16pt;font-weight:600;margin-bottom:4px;}
@@ -219,15 +229,11 @@
     body{background:#fff;padding:0;}
     .topbar{display:none;}
     .card{box-shadow:none;border:1px solid #ccc;break-inside:avoid;padding:8px 12px;margin-bottom:6px;}
-    /* Credit-limit sections (SCE/SCR/SCE-SCR/SCO/SCORP) always start fresh
-       on page 2 (page 1 is just "ข้อมูลทั่วไปของลูกค้า" + "หมายเหตุ เอกสาร
-       ในการขอเครดิต"), fitting 2 sections per page from there - a 3rd forces
-       a new page, a 5th forces another, etc. - toggled by
-       updatePrintPageBreaks(). "ผลการพิจารณาจากฝ่าย Credit Control" has no
-       break of its own so it shares the page with the last credit-limit
-       section whenever it fits (e.g. 1 company set: both on page 2). The
-       field density below (smaller label/input text, hidden hints, tighter
-       grid gaps) is tuned so 2 full sections actually fit within one page. */
+    /* Fit 2 credit-limit sections (SCE/SCR/SCE-SCR/SCO/SCORP) per printed
+       page: 1 or 2 sections stay on page 1, a 3rd forces a new page, a 5th
+       forces another, etc. - toggled by updatePrintPageBreaks(). The field
+       density below (smaller label/input text, hidden hints, tighter grid
+       gaps) is tuned so 2 full sections actually fit within one page. */
     .card.page-break-before{break-before:page;page-break-before:always;}
     /* The financial-statement card (#cardFinancials) always starts a fresh
        page, regardless of how many credit-limit sections precede it - this
@@ -623,7 +629,7 @@
 
 <div class="topbar">
   <div>
-    <h1>Credit Application &mdash; พิจารณาขอเครดิต (ลูกค้าใหม่)</h1>
+    <h1>Credit Application &mdash; พิจารณาทบทวนวงเงินเครดิต</h1>
     <div class="sub">แบบฟอร์มออนไลน์ (กรอก / แก้ไขได้) อ้างอิงจากไฟล์ Excel &nbsp;|&nbsp; ช่องสีแดง = ข้อมูลที่ต้องกรอก</div>
   </div>
   <div class="btns">
@@ -652,7 +658,7 @@
 <tbody><tr><td>
 
   <div class="doc-title-band">
-    <div class="doc-title">Credit Application พิจารณาขอเครดิต (ลูกค้าใหม่)</div>
+    <div class="doc-title">Credit Application พิจารณาทบทวนวงเงินเครดิต</div>
   </div>
 
   <!-- ============ SECTION: GENERAL INFO ============ -->
@@ -666,9 +672,9 @@
           <div class="hint">ระบบจะอ่านข้อมูลจากหน้าแรกของไฟล์เท่านั้น (ชื่อลูกค้า, เลขทะเบียนนิติบุคคล, วันที่จดทะเบียน, ประเภทธุรกิจ, จำนวนปีที่ดำเนินกิจการ, สถานะกิจการ, ทุนจดทะเบียนล่าสุด, ที่ตั้ง (กระทรวง), อำนาจกรรมการ) แล้วนำมากรอกในช่องด้านล่างให้อัตโนมัติ &mdash; กรุณาตรวจสอบความถูกต้องอีกครั้งก่อนบันทึก โดยเฉพาะวรรณยุกต์ภาษาไทยที่อาจดึงมาไม่สมบูรณ์</div>
         </div>
         <div>
-          <label class="small-btn" for="bolFile" style="cursor:pointer;display:inline-block;min-width:190px;text-align:center;font-size:14pt;">เลือกไฟล์ BOL PDF</label>
+          <label class="small-btn import-btn" for="bolFile" style="cursor:pointer;display:inline-block;">เลือกไฟล์ BOL PDF</label>
           <input type="file" id="bolFile" accept="application/pdf" style="display:none;">
-          <button type="button" class="small-btn" id="btnClearBol" style="margin-left:6px;min-width:190px;text-align:center;font-size:14pt;">ล้างข้อมูลที่นำเข้า</button>
+          <button class="small-btn import-btn" type="button" id="btnClearBol" style="margin-left:8px;">ล้างข้อมูล</button>
         </div>
       </div>
       <div id="bolStatus" class="bol-status"></div>
@@ -676,17 +682,10 @@
 
     <div class="grid cols3">
       <div class="field" style="grid-column:span 2;"><label class="req">ชื่อลูกค้า</label><input class="req-input" type="text" id="g_cust_th" placeholder="ชื่อบริษัทลูกค้า (ภาษาไทย)"></div>
-      <div class="field"><label>วันที่</label><input class="computed-input" type="text" id="g_date" readonly title="วันที่ปัจจุบัน ณ วันที่จัดทำเอกสาร - อัปเดตอัตโนมัติ แก้ไขเองไม่ได้"></div>
+      <div class="field"><label class="req">วันที่</label><input class="req-input thai-date" type="text" id="g_date" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10"></div>
       <div class="field wide"><label>Customer Name (English)</label><input class="req-input" type="text" id="g_cust_en" placeholder="Customer name in English"></div>
       <div class="field"><label class="req">เลขทะเบียนนิติบุคคล</label><input class="req-input" type="text" id="g_reg_no" placeholder="0-0000-00000-00-0"></div>
       <div class="field"><label class="req">วันที่จดทะเบียน</label><input class="req-input thai-date" type="text" id="g_reg_date" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10"></div>
-      <div class="field"><label class="req">สำนักงานใหญ่ / สาขา</label>
-        <select class="req-input" id="g_branch_type">
-          <option>สำนักงานใหญ่</option>
-          <option>สาขา</option>
-        </select>
-      </div>
-      <div class="field wide" id="g_branch_detail_wrap" style="display:none;"><label class="req">ระบุสาขา</label><input class="req-input" type="text" id="g_branch_detail" placeholder="ระบุชื่อสาขา / รหัสสาขา / สาขาที่ เช่น สาขาเชียงใหม่, รหัสสาขา 00002, สาขาที่ 2"></div>
       <div class="field wide"><label class="req">ประเภทธุรกิจ</label><input class="req-input" type="text" id="g_biz_type" placeholder="ประเภทธุรกิจ / ลักษณะการประกอบกิจการ"></div>
       <div class="field"><label>จำนวนปีที่ดำเนินกิจการ</label><input class="req-input" type="text" id="g_years_operating" placeholder="เช่น 39 ปี 1 เดือน"></div>
       <div class="field"><label>สถานะกิจการ</label><input class="req-input" type="text" id="g_biz_status" placeholder="เช่น ยังดำเนินกิจการอยู่"></div>
@@ -715,21 +714,27 @@
 
   <!-- ============ SECTION: DOC CHECKLIST ============ -->
   <div class="card">
-    <h2>หมายเหตุ เอกสารในการขอเครดิต</h2>
+    <h2>เอกสารประกอบ &amp; หลักเกณฑ์การประเมิน</h2>
     <div class="grid cols2">
-      <div class="checklist">
-        <label class="chk"><input type="checkbox" id="doc1"> หนังสือจดทะเบียนของบริษัทฯ</label>
-        <label class="chk"><input type="checkbox" id="doc2"> หนังสือรับรองของกระทรวงพาณิชย์</label>
-        <label class="chk"><input type="checkbox" id="doc3"> หนังสือแสดงการจดทะเบียนภาษีมูลค่าเพิ่ม (ภพ.20)</label>
-        <label class="chk"><input type="checkbox" id="doc4"> สำเนาบัตรประชาชนและทะเบียนบ้านของผู้มีอำนาจลงนาม</label>
-        <label class="chk"><input type="checkbox" id="doc5"> เอกสารแสดงรายได้ ภ.พ.30</label>
+      <div>
+        <h3>หมายเหตุ เอกสารในการทบทวนวงเงิน</h3>
+        <div class="checklist">
+          <label class="chk"><input type="checkbox" id="doc1"> เอกสารแสดงรายได้ ภ.พ.30</label>
+          <label class="chk"><input type="checkbox" id="doc2"> เอกสาร BOL (Corpus X)</label>
+          <label class="chk"><input type="checkbox" id="doc3"> STATEMENT ย้อนหลัง 3-6 เดือน</label>
+          <label class="chk"><input type="checkbox" id="doc4"> รูปถ่ายกิจการ</label>
+        </div>
       </div>
-      <div class="checklist">
-        <label class="chk"><input type="checkbox" id="doc6"> STATEMENT ย้อนหลัง 3-6 เดือน</label>
-        <label class="chk"><input type="checkbox" id="doc7"> ระเบียบการวางบิลรับเช็ค</label>
-        <label class="chk"><input type="checkbox" id="doc8"> ที่อยู่และแผนที่บริษัท/ห้างหุ้นส่วน</label>
-        <label class="chk"><input type="checkbox" id="doc9"> เอกสาร BOL (Corpus X)</label>
-        <label class="chk"><input type="checkbox" id="doc10"> รูปถ่ายกิจการ</label>
+      <div>
+        <h3>หลักเกณฑ์การประเมิน</h3>
+        <div class="checklist">
+          <label class="chk"><input type="checkbox" id="crit1"> ขาดการติดต่อซื้อขายนานกว่า 12 เดือน</label>
+          <label class="chk"><input type="checkbox" id="crit2"> ขาดทุนสุทธิ 2 ปี ติดต่อกัน</label>
+          <label class="chk"><input type="checkbox" id="crit3"> มีประวัติการชำระล่าช้า</label>
+          <label class="chk"><input type="checkbox" id="crit4"> 1 ปีล่าสุด มีขาดทุนสะสม / ส่วนของผู้ถือหุ้นติดลบ</label>
+          <label class="chk"><input type="checkbox" id="crit5"> ภายในระยะเวลา 1 ปี ที่ผ่านมา มีเช็คคืนทางการค้า
+            <input type="number" id="crit5n" style="max-width:60px;" value="0"> ฉบับ</label>
+        </div>
       </div>
     </div>
   </div>
@@ -739,12 +744,12 @@
     <div class="bol-box-row">
       <div>
         <strong>แนบไฟล์ PDF หรือ Word เพิ่มเติม (รายงาน Comment) เพื่อดึงข้อมูลวงเงินสินเชื่ออัตโนมัติ</strong>
-        <div class="hint">ระบบจะอ่านข้อมูล รหัสลูกค้า, ระยะเวลาเครดิต และยอดขายสูงสุด 5 ปีล่าสุด จากไฟล์ (รองรับ .pdf และ .docx) แล้วนำมากรอกในช่องของบริษัทที่ตรงกัน (SCE/SCR/SCO/SCORP) ให้อัตโนมัติ &mdash; กรุณาตรวจสอบความถูกต้องอีกครั้งก่อนบันทึก</div>
+        <div class="hint">ระบบจะอ่านข้อมูล รหัสลูกค้า, วงเงินสินเชื่อเดิม, จำนวนที่ใช้ไป, ตั้งประวัติเครดิต, ระเบียบวางบิล/ชำระเงิน, ชำระหนี้อยู่ในช่วง, เช็คในมือ, ประวัติเช็คคืน, ยอดขาย 3 ปีล่าสุด และยอดค้างชำระล่าสุด จากไฟล์ (รองรับ .pdf และ .docx) แล้วนำมากรอกในช่องของบริษัทที่ตรงกัน (SCE/SCR/SCO/SCORP) ให้อัตโนมัติ &mdash; กรุณาตรวจสอบความถูกต้องอีกครั้งก่อนบันทึก</div>
       </div>
       <div>
-        <label class="small-btn" for="cmFile" style="cursor:pointer;display:inline-block;min-width:190px;text-align:center;font-size:14pt;">เลือกไฟล์ Comment (PDF/Word)</label>
+        <label class="small-btn import-btn" for="cmFile" style="cursor:pointer;display:inline-block;">เลือกไฟล์ Comment (PDF/Word)</label>
         <input type="file" id="cmFile" accept="application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none;">
-        <button type="button" class="small-btn" id="btnClearCm" style="margin-left:6px;min-width:190px;text-align:center;font-size:14pt;">ล้างข้อมูลที่นำเข้า</button>
+        <button class="small-btn import-btn" type="button" id="btnClearCm" style="margin-left:8px;">ล้างข้อมูล</button>
       </div>
     </div>
     <div id="cmStatus" class="bol-status"></div>
@@ -804,14 +809,21 @@
 
   <!-- ============ SECTION: SCE ============ -->
   <div class="card sce" id="cardSCE">
-    <h2>ขอวงเงินสินเชื่อ - SCE</h2>
+    <h2>ข้อมูลวงเงินสินเชื่อ &mdash; SCE</h2>
     <div class="grid cols3">
       <div class="field"><label class="req">รหัสลูกค้า</label><input class="req-input" type="text" id="sce_code"></div>
       <div class="field"><label class="req">สังกัดลูกค้า</label><input class="req-input" type="text" id="sce_affiliation" value="SCE"></div>
       <div class="field"><label class="req">ชื่อพนักงานขาย</label><input class="req-input" type="text" id="sce_sales_rep"></div>
 
+      <div class="field"><label class="req">วงเงินสินเชื่อเดิม</label>
+        <div class="inline-unit"><input class="req-input fin-num-input" type="text" inputmode="decimal" id="sce_orig_limit"><span class="unit">บาท</span></div>
+      </div>
       <div class="field"><label class="req">วงเงินที่ขออนุมัติครั้งนี้</label>
         <div class="inline-unit"><input class="req-input fin-num-input" type="text" inputmode="decimal" id="sce_requested"><span class="unit">บาท</span></div>
+        <span class="hint">ระบุค่าลบ หากต้องการ "ลดวงเงิน"</span>
+      </div>
+      <div class="field"><label>วงเงินสินเชื่อรวม (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="sce_total" readonly><span class="unit">บาท</span></div>
       </div>
 
       <div class="field"><label class="req">ระยะเวลาเครดิต</label><input class="req-input" type="text" id="sce_credit_term" placeholder="เช่น 60 วัน"></div>
@@ -823,7 +835,18 @@
       <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="sce_affiliated_credit" placeholder="-"></div>
     </div>
 
-    <h3>ประวัติการซื้อขาย</h3>
+    <h3>วงเงินที่กิจการใช้ไป &amp; ประวัติการซื้อขาย</h3>
+    <div class="grid cols3">
+      <div class="field"><label class="req">จำนวนที่ใช้ไป</label>
+        <div class="inline-unit"><input class="req-input used-num-input" type="text" inputmode="decimal" id="sce_used"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>เกินวงเงิน (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="sce_over" readonly><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>คงเหลือ (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="sce_remaining" readonly><span class="unit">บาท</span></div>
+      </div>
+    </div>
 
     <table class="hist" id="sce_hist_table">
       <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
@@ -831,18 +854,35 @@
     </table>
     <div class="hist-actions"><button class="small-btn" type="button" id="sce_hist_add_btn" onclick="addHistRow('sce')">+ เพิ่มปี</button></div>
 
+    <div class="grid cols3">
+      <div class="field"><label class="req">ระเบียบวางบิล</label><input class="req-input" type="text" id="sce_billing_terms"></div>
+      <div class="field"><label class="req">ระเบียบชำระเงิน</label><input class="req-input" type="text" id="sce_payment_terms"></div>
+      <div class="field"><label class="req">ตั้งประวัติเครดิต</label><input class="req-input" type="text" id="sce_credit_established"></div>
+      <div class="field"><label class="req">ระยะเวลาเครดิต (วัน)</label><input class="req-input" type="text" id="sce_credit_days"></div>
+      <div class="field"><label class="req">ชำระหนี้อยู่ในช่วง (วัน)</label><input class="req-input" type="text" id="sce_payment_range" placeholder="เช่น 90-110"></div>
+      <div class="field"><label class="req">เช็คในมือ</label><input class="req-input" type="text" id="sce_checks_on_hand" placeholder="-"></div>
+      <div class="field"><label class="req">ประวัติเช็คคืน</label><input class="req-input" type="text" id="sce_returned_check" placeholder="-"></div>
+      <div class="field wide"><label class="req">ยอดค้างชำระล่าสุด</label><textarea class="req-input" id="sce_latest_outstanding"></textarea></div>
+    </div>
   </div>
 
   <!-- ============ SECTION: SCR ============ -->
   <div class="card scr" id="cardSCR" style="display:none;">
-    <h2>ขอวงเงินสินเชื่อ - SCR</h2>
+    <h2>ข้อมูลวงเงินสินเชื่อ &mdash; SCR</h2>
     <div class="grid cols3">
       <div class="field"><label class="req">รหัสลูกค้า</label><input class="req-input" type="text" id="scr_code"></div>
       <div class="field"><label class="req">สังกัดลูกค้า</label><input class="req-input" type="text" id="scr_affiliation" value="SCR"></div>
       <div class="field"><label class="req">ชื่อพนักงานขาย</label><input class="req-input" type="text" id="scr_sales_rep"></div>
 
+      <div class="field"><label class="req">วงเงินสินเชื่อเดิม</label>
+        <div class="inline-unit"><input class="req-input fin-num-input" type="text" inputmode="decimal" id="scr_orig_limit"><span class="unit">บาท</span></div>
+      </div>
       <div class="field"><label class="req">วงเงินที่ขออนุมัติครั้งนี้</label>
         <div class="inline-unit"><input class="req-input fin-num-input" type="text" inputmode="decimal" id="scr_requested"><span class="unit">บาท</span></div>
+        <span class="hint">ระบุค่าลบ หากต้องการ "ลดวงเงิน"</span>
+      </div>
+      <div class="field"><label>วงเงินสินเชื่อรวม (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scr_total" readonly><span class="unit">บาท</span></div>
       </div>
 
       <div class="field"><label class="req">ระยะเวลาเครดิต</label><input class="req-input" type="text" id="scr_credit_term" placeholder="เช่น 60 วัน"></div>
@@ -854,7 +894,18 @@
       <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="scr_affiliated_credit" placeholder="-"></div>
     </div>
 
-    <h3>ประวัติการซื้อขาย</h3>
+    <h3>วงเงินที่กิจการใช้ไป &amp; ประวัติการซื้อขาย</h3>
+    <div class="grid cols3">
+      <div class="field"><label class="req">จำนวนที่ใช้ไป</label>
+        <div class="inline-unit"><input class="req-input used-num-input" type="text" inputmode="decimal" id="scr_used"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>เกินวงเงิน (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scr_over" readonly><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>คงเหลือ (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scr_remaining" readonly><span class="unit">บาท</span></div>
+      </div>
+    </div>
 
     <table class="hist" id="scr_hist_table">
       <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
@@ -862,18 +913,35 @@
     </table>
     <div class="hist-actions"><button class="small-btn" type="button" id="scr_hist_add_btn" onclick="addHistRow('scr')">+ เพิ่มปี</button></div>
 
+    <div class="grid cols3">
+      <div class="field"><label class="req">ระเบียบวางบิล</label><input class="req-input" type="text" id="scr_billing_terms"></div>
+      <div class="field"><label class="req">ระเบียบชำระเงิน</label><input class="req-input" type="text" id="scr_payment_terms"></div>
+      <div class="field"><label class="req">ตั้งประวัติเครดิต</label><input class="req-input" type="text" id="scr_credit_established"></div>
+      <div class="field"><label class="req">ระยะเวลาเครดิต (วัน)</label><input class="req-input" type="text" id="scr_credit_days"></div>
+      <div class="field"><label class="req">ชำระหนี้อยู่ในช่วง (วัน)</label><input class="req-input" type="text" id="scr_payment_range" placeholder="เช่น 90-110"></div>
+      <div class="field"><label class="req">เช็คในมือ</label><input class="req-input" type="text" id="scr_checks_on_hand" placeholder="-"></div>
+      <div class="field"><label class="req">ประวัติเช็คคืน</label><input class="req-input" type="text" id="scr_returned_check" placeholder="-"></div>
+      <div class="field wide"><label class="req">ยอดค้างชำระล่าสุด</label><textarea class="req-input" id="scr_latest_outstanding"></textarea></div>
+    </div>
   </div>
 
   <!-- ============ SECTION: SCE/SCR (COMBINED) ============ -->
   <div class="card scescr" id="cardSCESCR" style="display:none;">
-    <h2>ขอวงเงินสินเชื่อ - SCE/SCR</h2>
+    <h2>ข้อมูลวงเงินสินเชื่อ &mdash; SCE/SCR</h2>
     <div class="grid cols3">
       <div class="field"><label class="req">รหัสลูกค้า</label><input class="req-input" type="text" id="scescr_code"></div>
       <div class="field"><label class="req">สังกัดลูกค้า</label><input class="req-input" type="text" id="scescr_affiliation" value="SCE/SCR"></div>
       <div class="field"><label class="req">ชื่อพนักงานขาย</label><input class="req-input" type="text" id="scescr_sales_rep"></div>
 
+      <div class="field"><label class="req">วงเงินสินเชื่อเดิม</label>
+        <div class="inline-unit"><input class="req-input fin-num-input" type="text" inputmode="decimal" id="scescr_orig_limit"><span class="unit">บาท</span></div>
+      </div>
       <div class="field"><label class="req">วงเงินที่ขออนุมัติครั้งนี้</label>
         <div class="inline-unit"><input class="req-input fin-num-input" type="text" inputmode="decimal" id="scescr_requested"><span class="unit">บาท</span></div>
+        <span class="hint">ระบุค่าลบ หากต้องการ "ลดวงเงิน"</span>
+      </div>
+      <div class="field"><label>วงเงินสินเชื่อรวม (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scescr_total" readonly><span class="unit">บาท</span></div>
       </div>
 
       <div class="field"><label class="req">ระยะเวลาเครดิต</label><input class="req-input" type="text" id="scescr_credit_term" placeholder="เช่น 60 วัน"></div>
@@ -885,7 +953,18 @@
       <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="scescr_affiliated_credit" placeholder="-"></div>
     </div>
 
-    <h3>ประวัติการซื้อขาย</h3>
+    <h3>วงเงินที่กิจการใช้ไป &amp; ประวัติการซื้อขาย</h3>
+    <div class="grid cols3">
+      <div class="field"><label class="req">จำนวนที่ใช้ไป</label>
+        <div class="inline-unit"><input class="req-input used-num-input" type="text" inputmode="decimal" id="scescr_used"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>เกินวงเงิน (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scescr_over" readonly><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>คงเหลือ (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scescr_remaining" readonly><span class="unit">บาท</span></div>
+      </div>
+    </div>
 
     <table class="hist" id="scescr_hist_table">
       <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
@@ -893,18 +972,35 @@
     </table>
     <div class="hist-actions"><button class="small-btn" type="button" id="scescr_hist_add_btn" onclick="addHistRow('scescr')">+ เพิ่มปี</button></div>
 
+    <div class="grid cols3">
+      <div class="field"><label class="req">ระเบียบวางบิล</label><input class="req-input" type="text" id="scescr_billing_terms"></div>
+      <div class="field"><label class="req">ระเบียบชำระเงิน</label><input class="req-input" type="text" id="scescr_payment_terms"></div>
+      <div class="field"><label class="req">ตั้งประวัติเครดิต</label><input class="req-input" type="text" id="scescr_credit_established"></div>
+      <div class="field"><label class="req">ระยะเวลาเครดิต (วัน)</label><input class="req-input" type="text" id="scescr_credit_days"></div>
+      <div class="field"><label class="req">ชำระหนี้อยู่ในช่วง (วัน)</label><input class="req-input" type="text" id="scescr_payment_range" placeholder="เช่น 90-110"></div>
+      <div class="field"><label class="req">เช็คในมือ</label><input class="req-input" type="text" id="scescr_checks_on_hand" placeholder="-"></div>
+      <div class="field"><label class="req">ประวัติเช็คคืน</label><input class="req-input" type="text" id="scescr_returned_check" placeholder="-"></div>
+      <div class="field wide"><label class="req">ยอดค้างชำระล่าสุด</label><textarea class="req-input" id="scescr_latest_outstanding"></textarea></div>
+    </div>
   </div>
 
   <!-- ============ SECTION: SCO ============ -->
   <div class="card sco" id="cardSCO" style="display:none;">
-    <h2>ขอวงเงินสินเชื่อ - SCO</h2>
+    <h2>ข้อมูลวงเงินสินเชื่อ &mdash; SCO</h2>
     <div class="grid cols3">
       <div class="field"><label class="req">รหัสลูกค้า</label><input class="req-input" type="text" id="sco_code"></div>
       <div class="field"><label class="req">สังกัดลูกค้า</label><input class="req-input" type="text" id="sco_affiliation" value="SCO"></div>
       <div class="field"><label class="req">ชื่อพนักงานขาย</label><input class="req-input" type="text" id="sco_sales_rep"></div>
 
+      <div class="field"><label class="req">วงเงินสินเชื่อเดิม</label>
+        <div class="inline-unit"><input class="req-input fin-num-input" type="text" inputmode="decimal" id="sco_orig_limit"><span class="unit">บาท</span></div>
+      </div>
       <div class="field"><label class="req">วงเงินที่ขออนุมัติครั้งนี้</label>
         <div class="inline-unit"><input class="req-input fin-num-input" type="text" inputmode="decimal" id="sco_requested"><span class="unit">บาท</span></div>
+        <span class="hint">ระบุค่าลบ หากต้องการ "ลดวงเงิน"</span>
+      </div>
+      <div class="field"><label>วงเงินสินเชื่อรวม (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="sco_total" readonly><span class="unit">บาท</span></div>
       </div>
 
       <div class="field"><label class="req">ระยะเวลาเครดิต</label><input class="req-input" type="text" id="sco_credit_term" placeholder="เช่น 60 วัน"></div>
@@ -921,7 +1017,18 @@
       </div>
     </div>
 
-    <h3>ประวัติการซื้อขาย</h3>
+    <h3>วงเงินที่กิจการใช้ไป &amp; ประวัติการซื้อขาย</h3>
+    <div class="grid cols3">
+      <div class="field"><label class="req">จำนวนที่ใช้ไป</label>
+        <div class="inline-unit"><input class="req-input used-num-input" type="text" inputmode="decimal" id="sco_used"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>เกินวงเงิน (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="sco_over" readonly><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>คงเหลือ (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="sco_remaining" readonly><span class="unit">บาท</span></div>
+      </div>
+    </div>
 
     <table class="hist" id="sco_hist_table">
       <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
@@ -929,18 +1036,35 @@
     </table>
     <div class="hist-actions"><button class="small-btn" type="button" id="sco_hist_add_btn" onclick="addHistRow('sco')">+ เพิ่มปี</button></div>
 
+    <div class="grid cols3">
+      <div class="field"><label class="req">ระเบียบวางบิล</label><input class="req-input" type="text" id="sco_billing_terms"></div>
+      <div class="field"><label class="req">ระเบียบชำระเงิน</label><input class="req-input" type="text" id="sco_payment_terms"></div>
+      <div class="field"><label class="req">ตั้งประวัติเครดิต</label><input class="req-input" type="text" id="sco_credit_established"></div>
+      <div class="field"><label class="req">ระยะเวลาเครดิต (วัน)</label><input class="req-input" type="text" id="sco_credit_days"></div>
+      <div class="field"><label class="req">ชำระหนี้อยู่ในช่วง (วัน)</label><input class="req-input" type="text" id="sco_payment_range" placeholder="เช่น 90-120"></div>
+      <div class="field"><label class="req">เช็คในมือ</label><input class="req-input" type="text" id="sco_checks_on_hand" placeholder="-"></div>
+      <div class="field"><label class="req">ประวัติเช็คคืน</label><input class="req-input" type="text" id="sco_returned_check" placeholder="-"></div>
+      <div class="field wide"><label class="req">ยอดค้างชำระล่าสุด</label><textarea class="req-input" id="sco_latest_outstanding"></textarea></div>
+    </div>
   </div>
 
   <!-- ============ SECTION: SCORP ============ -->
   <div class="card scorp" id="cardSCORP" style="display:none;">
-    <h2>ขอวงเงินสินเชื่อ - SCORP</h2>
+    <h2>ข้อมูลวงเงินสินเชื่อ &mdash; SCORP</h2>
     <div class="grid cols3">
       <div class="field"><label class="req">รหัสลูกค้า</label><input class="req-input" type="text" id="scorp_code"></div>
       <div class="field"><label class="req">สังกัดลูกค้า</label><input class="req-input" type="text" id="scorp_affiliation" value="SCORP"></div>
       <div class="field"><label class="req">ชื่อพนักงานขาย</label><input class="req-input" type="text" id="scorp_sales_rep"></div>
 
+      <div class="field"><label class="req">วงเงินสินเชื่อเดิม</label>
+        <div class="inline-unit"><input class="req-input fin-num-input" type="text" inputmode="decimal" id="scorp_orig_limit"><span class="unit">บาท</span></div>
+      </div>
       <div class="field"><label class="req">วงเงินที่ขออนุมัติครั้งนี้</label>
         <div class="inline-unit"><input class="req-input fin-num-input" type="text" inputmode="decimal" id="scorp_requested"><span class="unit">บาท</span></div>
+        <span class="hint">ระบุค่าลบ หากต้องการ "ลดวงเงิน"</span>
+      </div>
+      <div class="field"><label>วงเงินสินเชื่อรวม (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scorp_total" readonly><span class="unit">บาท</span></div>
       </div>
 
       <div class="field"><label class="req">ระยะเวลาเครดิต</label><input class="req-input" type="text" id="scorp_credit_term" placeholder="เช่น 60 วัน"></div>
@@ -952,7 +1076,18 @@
       <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="scorp_affiliated_credit" placeholder="-"></div>
     </div>
 
-    <h3>ประวัติการซื้อขาย</h3>
+    <h3>วงเงินที่กิจการใช้ไป &amp; ประวัติการซื้อขาย</h3>
+    <div class="grid cols3">
+      <div class="field"><label class="req">จำนวนที่ใช้ไป</label>
+        <div class="inline-unit"><input class="req-input used-num-input" type="text" inputmode="decimal" id="scorp_used"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>เกินวงเงิน (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scorp_over" readonly><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>คงเหลือ (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scorp_remaining" readonly><span class="unit">บาท</span></div>
+      </div>
+    </div>
 
     <table class="hist" id="scorp_hist_table">
       <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
@@ -960,12 +1095,23 @@
     </table>
     <div class="hist-actions"><button class="small-btn" type="button" id="scorp_hist_add_btn" onclick="addHistRow('scorp')">+ เพิ่มปี</button></div>
 
+    <div class="grid cols3">
+      <div class="field"><label class="req">ระเบียบวางบิล</label><input class="req-input" type="text" id="scorp_billing_terms"></div>
+      <div class="field"><label class="req">ระเบียบชำระเงิน</label><input class="req-input" type="text" id="scorp_payment_terms"></div>
+      <div class="field"><label class="req">ตั้งประวัติเครดิต</label><input class="req-input" type="text" id="scorp_credit_established"></div>
+      <div class="field"><label class="req">ระยะเวลาเครดิต (วัน)</label><input class="req-input" type="text" id="scorp_credit_days"></div>
+      <div class="field"><label class="req">ชำระหนี้อยู่ในช่วง (วัน)</label><input class="req-input" type="text" id="scorp_payment_range" placeholder="เช่น 90-110"></div>
+      <div class="field"><label class="req">เช็คในมือ</label><input class="req-input" type="text" id="scorp_checks_on_hand" placeholder="-"></div>
+      <div class="field"><label class="req">ประวัติเช็คคืน</label><input class="req-input" type="text" id="scorp_returned_check" placeholder="-"></div>
+      <div class="field wide"><label class="req">ยอดค้างชำระล่าสุด</label><textarea class="req-input" id="scorp_latest_outstanding"></textarea></div>
+    </div>
   </div>
 
   <!-- ============ SECTION: ภ.พ.30 & บัญชีธนาคาร ============ -->
   <!-- One shared section for the whole application (not per company set) -
        always rendered once, right after whichever company card ends up
-       last in the DOM. -->
+       last in the DOM (hidden cards take no layout space, so this simply
+       follows the last VISIBLE card no matter how many sets are selected). -->
   <div class="card">
     <h2>ภ.พ.30 &amp; บัญชีธนาคาร</h2>
     <!-- Independent show/hide toggles for each half of this card - a company
@@ -975,152 +1121,110 @@
          via .visibility-toggle, same pattern as .tmpl-picker/.sync-btn). -->
     <div class="grid cols2 visibility-toggle" style="margin-bottom:2px;">
       <div class="field"><label>มี ภ.พ.30 หรือไม่</label>
-        <select id="cc_has_pp30">
+        <select id="has_pp30">
           <option value="no" selected>ไม่มี</option>
           <option value="yes">มี</option>
         </select>
       </div>
       <div class="field"><label>มีบัญชีธนาคารหรือไม่</label>
-        <select id="cc_has_bank">
+        <select id="has_bank">
           <option value="no" selected>ไม่มี</option>
           <option value="yes">มี</option>
         </select>
       </div>
     </div>
-    <!-- Always visible regardless of the cc_has_pp30 toggle above (even when
+    <!-- Always visible regardless of the has_pp30 toggle above (even when
          "ไม่มี" is selected) - the assistant itself is often how the user
          figures out whether the company has ภ.พ.30 data to report, so the
-         button that opens it must not be hidden by #cc_pp30_fields_wrap's
+         button that opens it must not be hidden by #pp30_fields_wrap's
          display:none (see updatePP30BankVisibility()). Applying data from
-         the assistant also auto-sets cc_has_pp30 to "มี" for the user. -->
+         the assistant also auto-sets has_pp30 to "มี" for the user. -->
     <div class="visibility-toggle" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;">
       <button type="button" class="small-btn import-btn" id="btnOpenPp30Assistant" style="white-space:nowrap;">📁 เปิดผู้ช่วยกรอก ภ.พ.30 (จากไฟล์ PDF)</button>
       <button type="button" class="small-btn import-btn" id="btnImportBankXlsx" style="white-space:nowrap;">📁 แนบไฟล์ Excel บัญชีธนาคาร (สูงสุด 3 ไฟล์ ดึงจากชีท "สรุปรวมทั้งหมด")</button>
       <input type="file" id="bankXlsxFileInput" accept=".xlsx,.xls" multiple style="display:none;">
     </div>
-    <div class="grid cols2">
-      <div class="field wide" id="cc_pp30_fields_wrap"><label class="req">ภ.พ.30 (ปี<input type="text" id="cc_pp30_year" value="69" style="width:40px;display:inline-block;text-align:center;border:1px solid #ccc;border-radius:4px;padding:1px 3px;font:inherit;color:var(--text);font-weight:600;">)</label>
-        <select id="cc_pp30_template" class="tmpl-picker" style="margin-bottom:6px;">
-          <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
-          <option value="(ม.ค. - พ.ค.) มียอดขายรวม 31.83 ลบ. เฉลี่ยเดือนละ 6.37 ลบ. มียอดซื้อรวม 23.07 ลบ. เฉลี่ยเดือนละ 4.61 ลบ.">(ม.ค. - พ.ค.) มียอดขายรวม 31.83 ลบ. เฉลี่ยเดือนละ 6.37 ลบ. มียอดซื้อรวม 23.07 ลบ. เฉลี่ยเดือนละ 4.61 ลบ.</option>
-        </select>
-        <textarea class="req-input" id="cc_pp30_detail" rows="2" placeholder="ระบุรายละเอียดยอดขาย/ยอดซื้อเพิ่มเติม"></textarea>
+    <div class="grid cols4">
+      <div class="field wide" id="pp30_fields_wrap"><label class="req">ภ.พ.30 (ปี <input type="text" id="pp30_year" class="req-input" inputmode="numeric" maxlength="2" placeholder="69" style="max-width:40px; text-align:center; padding:2px 4px; font-weight:600;"> )</label>
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+          <select id="pp30_template" class="tmpl-picker" style="flex:1; min-width:200px; margin-bottom:0;">
+            <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
+            <option value='(ม.ค. - พ.ค.) มียอดขายรวม 31.83 ลบ. เฉลี่ยเดือนละ 6.37 ลบ. มียอดซื้อรวม 23.07 ลบ. เฉลี่ยเดือนละ 4.61 ลบ.'>ตัวอย่าง — สรุปยอดขาย/ยอดซื้อ ภ.พ.30</option>
+          </select>
+        </div>
+        <textarea class="req-input" id="pp30_summary" rows="2"></textarea>
       </div>
 
-      <div class="field wide" id="cc_bank_fields_wrap"><label class="req">บัญชีธนาคาร / ประเภทของเงินฝาก / ชื่อบัญชี / เลขที่บัญชี</label>
+      <!-- ธนาคาร now gets its own full-width row (bank legal names run
+           long, e.g. "ธนาคารทหารไทยธนชาต จำกัด (มหาชน)") with the other
+           3 fields moved to a second row underneath it. Supports up to 3
+           bank accounts (e.g. up to 3 statement-Excel files attached at
+           once via "แนบไฟล์ Excel บัญชีธนาคาร") - accounts 2 and 3 stay
+           hidden until a file fills them in; each can be removed again with
+           its own "✕ ลบบัญชีนี้" (screen-only, print-hidden like the rest
+           of .visibility-toggle). -->
+      <div class="bank-fields-wrap" id="bankFieldsOuter" style="grid-column:1/-1;">
 
-        <div id="ccBankBlock1">
-          <!-- "ธนาคาร" gets its own full-width row (bank legal names run long,
-               e.g. "ธนาคารทหารไทยธนชาต จำกัด (มหาชน)") with the other 3
-               fields moved to a second row underneath it. Supports up to 3
-               bank accounts (e.g. up to 3 statement-Excel files attached at
-               once via "แนบไฟล์ Excel บัญชีธนาคาร") - accounts 2 and 3 stay
-               hidden until a file fills them in; each can be removed again
-               with its own "✕ ลบบัญชีนี้" (screen-only, print-hidden like
-               the rest of .visibility-toggle). -->
-          <div style="display:grid;grid-template-columns:1fr;gap:12px 16px;margin-bottom:12px;">
-            <div class="field"><label>ธนาคาร</label>
-              <input type="text" class="req-input" id="cc_bank_name" list="bankNameList" placeholder="พิมพ์ค้นหา หรือเลือกชื่อธนาคาร" autocomplete="off">
-              <datalist id="bankNameList">
-                <option value="ธนาคารกรุงเทพ"></option>
-                <option value="ธนาคารกสิกรไทย"></option>
-                <option value="ธนาคารกรุงไทย"></option>
-                <option value="ธนาคารทหารไทยธนชาต (ttb)"></option>
-                <option value="ธนาคารไทยพาณิชย์"></option>
-                <option value="ธนาคารกรุงศรีอยุธยา"></option>
-                <option value="ธนาคารเกียรตินาคินภัทร"></option>
-                <option value="ธนาคารซีไอเอ็มบี ไทย"></option>
-                <option value="ธนาคารทิสโก้"></option>
-                <option value="ธนาคารยูโอบี"></option>
-                <option value="ธนาคารแลนด์ แอนด์ เฮ้าส์"></option>
-                <option value="ธนาคารไอซีบีซี (ไทย)"></option>
-                <option value="ธนาคารซูมิโตโม มิตซุย ทรัสต์ (ไทย)"></option>
-                <option value="ธนาคารออมสิน"></option>
-                <option value="ธนาคารอาคารสงเคราะห์"></option>
-                <option value="ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.)"></option>
-                <option value="ธนาคารอิสลามแห่งประเทศไทย"></option>
-                <option value="ธนาคารเพื่อการส่งออกและนำเข้าแห่งประเทศไทย (EXIM Bank)"></option>
-                <option value="ธนาคารพัฒนาวิสาหกิจขนาดกลางและขนาดย่อมแห่งประเทศไทย (SME Bank)"></option>
-              </datalist>
-            </div>
-            <div class="grid cols3">
-              <div class="field"><label>ประเภทของเงินฝาก</label>
-                <input type="text" class="req-input" id="cc_bank_acc_type" list="bankAccTypeList" placeholder="พิมพ์ค้นหา หรือเลือกประเภทเงินฝาก" autocomplete="off">
-                <datalist id="bankAccTypeList">
-                  <option value="ออมทรัพย์"></option>
-                  <option value="กระแสรายวัน"></option>
-                  <option value="ฝากประจำ"></option>
-                </datalist>
-              </div>
-              <div class="field"><label>ชื่อบัญชี</label>
-                <input type="text" class="req-input" id="cc_bank_acc_name" placeholder="ชื่อบัญชี (ลิงค์อัตโนมัติจากชื่อลูกค้า แก้ไขได้)">
-              </div>
-              <div class="field"><label>เลขที่บัญชี</label>
-                <input type="text" class="req-input" id="cc_bank_acc_no" placeholder="เลขที่บัญชี">
-              </div>
+        <div class="bank-account-block" id="bankBlock1">
+          <div style="display:grid;grid-template-columns:1fr;gap:12px 16px;">
+            <div class="field"><label>ธนาคาร</label><input type="text" id="bank_name" list="thaiBankList" placeholder="เลือกหรือพิมพ์ค้นหาธนาคาร"></div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 16px;">
+              <div class="field"><label>ประเภทของเงินฝาก</label><input type="text" id="bank_account_type" list="depositTypeList" placeholder="เลือกหรือพิมพ์ค้นหาประเภท"></div>
+              <div class="field"><label>ชื่อบัญชี</label><input type="text" id="bank_account_name" placeholder="-"></div>
+              <div class="field"><label>เลขที่บัญชี</label><input type="text" id="bank_account_no" placeholder="-"></div>
             </div>
           </div>
-          <select id="cc_bank_flow_template" class="tmpl-picker" style="margin-bottom:6px;">
-            <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
-            <option value="เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.">เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.</option>
-          </select>
-          <textarea class="req-input" id="cc_bank_flow_detail" rows="2" placeholder="ระบุรายละเอียดการเดินบัญชี"></textarea>
+          <div class="field wide" style="margin-top:12px;"><label>สรุปเงินฝาก-ถอน</label>
+            <select id="bank_summary_template" class="tmpl-picker" style="margin-bottom:6px;">
+              <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
+              <option value='เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.'>ตัวอย่าง — สรุปเงินฝาก-ถอนบัญชีธนาคาร</option>
+            </select>
+            <textarea class="req-input" id="bank_summary" rows="2"></textarea>
+          </div>
         </div>
 
-        <div class="bank-account-extra" id="ccBankBlock2" data-active="0" style="display:none;">
+        <div class="bank-account-block bank-account-extra" id="bankBlock2" data-active="0" style="display:none;">
           <div class="bank-account-block-head visibility-toggle">
             <span class="bank-account-block-title">บัญชีธนาคารที่ 2</span>
             <button type="button" class="small-btn remove" data-target="2">✕ ลบบัญชีนี้</button>
           </div>
-          <div style="display:grid;grid-template-columns:1fr;gap:12px 16px;margin-bottom:12px;">
-            <div class="field"><label>ธนาคาร</label>
-              <input type="text" class="req-input" id="cc_bank_name_2" list="bankNameList" placeholder="พิมพ์ค้นหา หรือเลือกชื่อธนาคาร" autocomplete="off">
-            </div>
-            <div class="grid cols3">
-              <div class="field"><label>ประเภทของเงินฝาก</label>
-                <input type="text" class="req-input" id="cc_bank_acc_type_2" list="bankAccTypeList" placeholder="พิมพ์ค้นหา หรือเลือกประเภทเงินฝาก" autocomplete="off">
-              </div>
-              <div class="field"><label>ชื่อบัญชี</label>
-                <input type="text" class="req-input" id="cc_bank_acc_name_2" placeholder="ชื่อบัญชี (ลิงค์อัตโนมัติจากชื่อลูกค้า แก้ไขได้)">
-              </div>
-              <div class="field"><label>เลขที่บัญชี</label>
-                <input type="text" class="req-input" id="cc_bank_acc_no_2" placeholder="เลขที่บัญชี">
-              </div>
+          <div style="display:grid;grid-template-columns:1fr;gap:12px 16px;">
+            <div class="field"><label>ธนาคาร</label><input type="text" id="bank_name_2" list="thaiBankList" placeholder="เลือกหรือพิมพ์ค้นหาธนาคาร"></div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 16px;">
+              <div class="field"><label>ประเภทของเงินฝาก</label><input type="text" id="bank_account_type_2" list="depositTypeList" placeholder="เลือกหรือพิมพ์ค้นหาประเภท"></div>
+              <div class="field"><label>ชื่อบัญชี</label><input type="text" id="bank_account_name_2" placeholder="-"></div>
+              <div class="field"><label>เลขที่บัญชี</label><input type="text" id="bank_account_no_2" placeholder="-"></div>
             </div>
           </div>
-          <select id="cc_bank_flow_template_2" class="tmpl-picker" style="margin-bottom:6px;">
-            <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
-            <option value="เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.">เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.</option>
-          </select>
-          <textarea class="req-input" id="cc_bank_flow_detail_2" rows="2" placeholder="ระบุรายละเอียดการเดินบัญชี"></textarea>
+          <div class="field wide" style="margin-top:12px;"><label>สรุปเงินฝาก-ถอน</label>
+            <select id="bank_summary_template_2" class="tmpl-picker" style="margin-bottom:6px;">
+              <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
+              <option value='เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.'>ตัวอย่าง — สรุปเงินฝาก-ถอนบัญชีธนาคาร</option>
+            </select>
+            <textarea class="req-input" id="bank_summary_2" rows="2"></textarea>
+          </div>
         </div>
 
-        <div class="bank-account-extra" id="ccBankBlock3" data-active="0" style="display:none;">
+        <div class="bank-account-block bank-account-extra" id="bankBlock3" data-active="0" style="display:none;">
           <div class="bank-account-block-head visibility-toggle">
             <span class="bank-account-block-title">บัญชีธนาคารที่ 3</span>
             <button type="button" class="small-btn remove" data-target="3">✕ ลบบัญชีนี้</button>
           </div>
-          <div style="display:grid;grid-template-columns:1fr;gap:12px 16px;margin-bottom:12px;">
-            <div class="field"><label>ธนาคาร</label>
-              <input type="text" class="req-input" id="cc_bank_name_3" list="bankNameList" placeholder="พิมพ์ค้นหา หรือเลือกชื่อธนาคาร" autocomplete="off">
-            </div>
-            <div class="grid cols3">
-              <div class="field"><label>ประเภทของเงินฝาก</label>
-                <input type="text" class="req-input" id="cc_bank_acc_type_3" list="bankAccTypeList" placeholder="พิมพ์ค้นหา หรือเลือกประเภทเงินฝาก" autocomplete="off">
-              </div>
-              <div class="field"><label>ชื่อบัญชี</label>
-                <input type="text" class="req-input" id="cc_bank_acc_name_3" placeholder="ชื่อบัญชี (ลิงค์อัตโนมัติจากชื่อลูกค้า แก้ไขได้)">
-              </div>
-              <div class="field"><label>เลขที่บัญชี</label>
-                <input type="text" class="req-input" id="cc_bank_acc_no_3" placeholder="เลขที่บัญชี">
-              </div>
+          <div style="display:grid;grid-template-columns:1fr;gap:12px 16px;">
+            <div class="field"><label>ธนาคาร</label><input type="text" id="bank_name_3" list="thaiBankList" placeholder="เลือกหรือพิมพ์ค้นหาธนาคาร"></div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 16px;">
+              <div class="field"><label>ประเภทของเงินฝาก</label><input type="text" id="bank_account_type_3" list="depositTypeList" placeholder="เลือกหรือพิมพ์ค้นหาประเภท"></div>
+              <div class="field"><label>ชื่อบัญชี</label><input type="text" id="bank_account_name_3" placeholder="-"></div>
+              <div class="field"><label>เลขที่บัญชี</label><input type="text" id="bank_account_no_3" placeholder="-"></div>
             </div>
           </div>
-          <select id="cc_bank_flow_template_3" class="tmpl-picker" style="margin-bottom:6px;">
-            <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
-            <option value="เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.">เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.</option>
-          </select>
-          <textarea class="req-input" id="cc_bank_flow_detail_3" rows="2" placeholder="ระบุรายละเอียดการเดินบัญชี"></textarea>
+          <div class="field wide" style="margin-top:12px;"><label>สรุปเงินฝาก-ถอน</label>
+            <select id="bank_summary_template_3" class="tmpl-picker" style="margin-bottom:6px;">
+              <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
+              <option value='เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.'>ตัวอย่าง — สรุปเงินฝาก-ถอนบัญชีธนาคาร</option>
+            </select>
+            <textarea class="req-input" id="bank_summary_3" rows="2"></textarea>
+          </div>
         </div>
 
       </div>
@@ -1131,89 +1235,32 @@
   <div class="card">
     <h2>ผลการพิจารณาจากฝ่าย Credit Control</h2>
     <div class="grid cols2">
-      <div class="field wide"><label class="req">สินค้าที่ต้องการซื้อเป็นเครดิตการค้า</label>
-        <textarea class="req-input" id="cc_product" rows="2" placeholder="ระบุสินค้าที่ต้องการซื้อเป็นเครดิตการค้า"></textarea>
+      <div class="field wide"><label class="req">ลักษณะการประกอบธุรกิจ (สรุปโดยฝ่าย Credit Control)</label>
+        <div class="biz-desc-row">
+          <span class="biz-desc-prefix" id="cc_business_desc_prefix"></span>
+          <textarea class="req-input biz-desc-input" id="cc_business_desc_detail" rows="2" placeholder="ระบุรายละเอียดกิจกรรมทางธุรกิจ"></textarea>
+        </div>
+        <input type="hidden" id="cc_business_desc">
       </div>
-
-      <div class="field wide"><label class="req">กลุ่มลูกค้าหลัก</label>
-        <textarea class="req-input" id="cc_main_customer_group" rows="2" placeholder="ระบุกลุ่มลูกค้าหลัก"></textarea>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============ SECTION: FINANCIALS ============ -->
-  <div class="card" id="cardFinancials">
-    <h2>งบการเงินย้อนหลัง 3 ปี</h2>
-    <div class="fin-note" id="finNoteText">คอลัมน์ "ปี 2568 / 2567 / 2566" (สีแดง) กรอกได้ &nbsp;|&nbsp; แถวตัวหนา และคอลัมน์ Growth Rate / อัตราส่วนทางการเงิน คำนวณอัตโนมัติจากตัวเลขที่กรอก</div>
-
-    <h3>งบกำไรขาดทุน</h3>
-    <div class="fin-scroll"><table class="fin" id="tbl_income"></table></div>
-
-    <h3>งบดุล</h3>
-    <div class="fin-scroll"><table class="fin" id="tbl_balance"></table></div>
-
-    <h3>อัตราส่วนทางการเงิน</h3>
-    <div class="fin-scroll"><table class="fin" id="tbl_ratio"></table></div>
-
-    <h3 style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-      <span>สรุปผลการดำเนินงาน</span>
-      <button type="button" class="sync-btn" onclick="syncAllFinTextFields()">ดึงข้อความอัตโนมัติทั้งหมด (งบ / อัตราส่วน / วงเงินที่ขออนุมัติ)</button>
-    </h3>
-    <div class="grid cols2">
-      <div class="field wide">
-        <label class="req">ภาพรวมผลการดำเนินงานของกิจการ</label>
-        <select id="fin_overview_revenue_template" class="tmpl-picker" style="margin-bottom:6px;">
+      <div class="field wide"><label class="req">เหตุผล / ความเห็นประกอบการนำเสนอ</label>
+        <select id="cc_reason_template" class="tmpl-picker" style="margin-bottom:6px;">
           <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
-          <option value="ภาพรวมผลการดำเนินงานของกิจการมีรายได้รวมจากการดำเนินงานในปี (68-66) อยู่ที่ 82.79 ลบ. , 80.47 ลบ. และ 78.03 ลบ.">ภาพรวมผลการดำเนินงานของกิจการมีรายได้รวม...</option>
+          <option value='เนื่องจากมีการลดวงเงินประกันคุ้มครองลงจากเดิมมีวงเงินประกัน 9.56 ลบ ลดลงเหลือ 6.0 ลบ. จึงเห็นควรนำเสนอ &quot;ลดวงเงิน&quot; ตามรายละเอียดที่กล่าวด้านล่าง'>ลดวงเงิน — วงเงินประกันคุ้มครองลดลง</option>
+          <option value='ที่ผ่านมาอ้างอิงตั้งแต่ปี (68) พบว่ามีประวัติจ่ายชำระล่าช้า จึงเห็นควรนำเสนอ &quot;ลดวงเงิน&quot; ตามรายละเอียดที่กล่าวด้านล่าง'>ลดวงเงิน — มีประวัติจ่ายชำระล่าช้า</option>
+          <option value='ที่ผ่านมาอ้างอิงตั้งแต่ปี (68) พบว่ามีประวัติจ่ายชำระปกติ จึงเห็นควรนำเสนอ &quot;เพิ่มวงเงิน&quot; ตามรายละเอียดที่กล่าวด้านล่าง'>เพิ่มวงเงิน — มีประวัติจ่ายชำระปกติ</option>
         </select>
-        <textarea class="req-input" id="fin_overview_revenue" rows="2" placeholder="ระบุภาพรวมผลการดำเนินงาน / รายได้รวม"></textarea>
-      </div>
-      <div class="field wide">
-        <label class="req">ผลการดำเนินงานตามงบสรรพากร</label>
-        <select id="fin_overview_tax_template" class="tmpl-picker" style="margin-bottom:6px;">
-          <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
-          <option value="ผลการดำเนินงานตามงบสรรพากร : ในปี (68-66) มีกำไรอยู่ที่ (3.65) ลบ. , 0.03 ลบ. และ 5.93 ลบ. และส่วนของผู้ถือหุ้นเป็นบวก มีกำไรสะสมเป็นบวก">ผลการดำเนินงานตามงบสรรพากร : ในปี (68-66)...</option>
-        </select>
-        <textarea class="req-input" id="fin_overview_tax" rows="2" placeholder="ระบุผลการดำเนินงานตามงบสรรพากร"></textarea>
-      </div>
-    </div>
-
-    <h3>สรุปอัตราส่วนทางการเงิน</h3>
-    <div class="grid cols2">
-      <div class="field wide">
-        <label class="req">สรุป Current Ratio</label>
-        <select id="fin_ratio_current_summary_template" class="tmpl-picker" style="margin-bottom:6px;">
-          <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
-          <option value="Current ratio ในปี 2568 เท่ากับ 3.67 เท่า เพิ่มขึ้นจากปี 2567 ที่เท่ากับ 2.20 เท่า">Current ratio ในปี 2568 เท่ากับ 3.67 เท่า...</option>
-        </select>
-        <textarea class="req-input" id="fin_ratio_current_summary" rows="2" placeholder="ระบุสรุป Current Ratio"></textarea>
-      </div>
-      <div class="field wide">
-        <label class="req">สรุปอัตราส่วน D/E</label>
-        <select id="fin_ratio_de_summary_template" class="tmpl-picker" style="margin-bottom:6px;">
-          <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
-          <option value="อัตราส่วน D/E ในปี 2568 เท่ากับ 0.75 เท่า ลดลงจากปี 2567 ที่เท่ากับ 1.48 เท่า">อัตราส่วน D/E ในปี 2568 เท่ากับ 0.75 เท่า...</option>
-        </select>
-        <textarea class="req-input" id="fin_ratio_de_summary" rows="2" placeholder="ระบุสรุปอัตราส่วน D/E"></textarea>
-      </div>
-      <div class="field wide">
-        <label class="req">สรุปความเห็น / ข้อเสนอการอนุมัติวงเงิน</label>
-        <select id="fin_summary_template" class="tmpl-picker" style="margin-bottom:6px;">
-          <option value="">-- เลือกแม่แบบข้อความช่วยพิมพ์ (แก้ไขได้หลังเลือก) --</option>
-          <option value="ครั้งนี้ เห็นควรขออนุมัติวงเงินสินเชื่อเครดิตการค้า จำนวน 250,000 บาท ให้แก่ลูกค้าราย บริษัท สีโอ เพาเวอร์ ซัพพลาย จำกัด&#10;- หลักทรัพย์ค้ำประกัน : ไม่มี&#10;- เงื่อนไขอื่นๆ : ไม่มี">ครั้งนี้ เห็นควรขออนุมัติวงเงิน... / หลักทรัพย์ค้ำประกัน / เงื่อนไขอื่นๆ</option>
-        </select>
-        <textarea class="req-input" id="fin_summary_detail" rows="4" placeholder="ระบุความเห็น/ข้อเสนอการอนุมัติวงเงิน, หลักทรัพย์ค้ำประกัน, เงื่อนไขอื่นๆ"></textarea>
+        <textarea class="req-input" id="cc_reason" rows="2"></textarea>
       </div>
     </div>
 
     <table class="summary-table">
-      <thead><tr><th></th><th>วงเงินที่ขออนุมัติครั้งนี้</th></tr></thead>
+      <thead><tr><th></th><th>วงเงินสินเชื่อเดิม</th><th>วงเงินที่ขออนุมัติครั้งนี้</th><th>วงเงินสินเชื่อรวม</th></tr></thead>
       <tbody>
-        <tr id="sumRowSCE"><th>SCE</th><td class="num" id="sum_sce_req">-</td></tr>
-        <tr id="sumRowSCR" style="display:none;"><th>SCR</th><td class="num" id="sum_scr_req">-</td></tr>
-        <tr id="sumRowSCESCR" style="display:none;"><th>SCE/SCR</th><td class="num" id="sum_scescr_req">-</td></tr>
-        <tr id="sumRowSCO" style="display:none;"><th>SCO</th><td class="num" id="sum_sco_req">-</td></tr>
-        <tr id="sumRowSCORP" style="display:none;"><th>SCORP</th><td class="num" id="sum_scorp_req">-</td></tr>
+        <tr id="sumRowSCE"><th>SCE</th><td class="num" id="sum_sce_orig">-</td><td class="num" id="sum_sce_req">-</td><td class="num" id="sum_sce_total">-</td></tr>
+        <tr id="sumRowSCR" style="display:none;"><th>SCR</th><td class="num" id="sum_scr_orig">-</td><td class="num" id="sum_scr_req">-</td><td class="num" id="sum_scr_total">-</td></tr>
+        <tr id="sumRowSCESCR" style="display:none;"><th>SCE/SCR</th><td class="num" id="sum_scescr_orig">-</td><td class="num" id="sum_scescr_req">-</td><td class="num" id="sum_scescr_total">-</td></tr>
+        <tr id="sumRowSCO" style="display:none;"><th>SCO</th><td class="num" id="sum_sco_orig">-</td><td class="num" id="sum_sco_req">-</td><td class="num" id="sum_sco_total">-</td></tr>
+        <tr id="sumRowSCORP" style="display:none;"><th>SCORP</th><td class="num" id="sum_scorp_orig">-</td><td class="num" id="sum_scorp_req">-</td><td class="num" id="sum_scorp_total">-</td></tr>
       </tbody>
     </table>
 
@@ -1236,10 +1283,10 @@
           <h4>ความเห็นเจ้าหน้าที่ / ผู้จัดการวิเคราะห์สินเชื่อ</h4>
         </div>
         <div class="approval-cell approval-cell-right" style="grid-row:1;grid-column:2;">
-          <h4 style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-            <span>ผลการอนุมัติ (ผู้บริหาร)</span>
-            <button type="button" class="sync-btn" onclick="syncAllExecNotes()">ดึงข้อความอัตโนมัติ</button>
-          </h4>
+          <div class="approval-header-row">
+            <h4>ผลการอนุมัติ (ผู้บริหาร)</h4>
+            <button type="button" class="sync-btn" onclick="syncAllExecNotes()">ดึงข้อความอัตโนมัติ (ทุกบริษัท)</button>
+          </div>
         </div>
 
         <div class="approval-cell approval-cell-left opt-group" id="optAnalystSCE" style="grid-row:2;grid-column:1;">
@@ -1379,8 +1426,63 @@
     </div>
   </div>
 
+  <!-- ============ SECTION: FINANCIALS ============ -->
+  <div class="card" id="cardFinancials">
+    <h2>งบการเงินย้อนหลัง 3 ปี</h2>
+    <div class="fin-note" id="finYearNote">คอลัมน์ "ปี 2568 / 2567 / 2566" (สีแดง) กรอกได้ &nbsp;|&nbsp; แถวตัวหนา และคอลัมน์ Growth Rate / อัตราส่วนทางการเงิน คำนวณอัตโนมัติจากตัวเลขที่กรอก</div>
+
+    <h3>งบกำไรขาดทุน</h3>
+    <div class="fin-scroll"><table class="fin" id="tbl_income"></table></div>
+
+    <h3>งบดุล</h3>
+    <div class="fin-scroll"><table class="fin" id="tbl_balance"></table></div>
+
+    <h3>อัตราส่วนทางการเงิน</h3>
+    <div class="fin-scroll"><table class="fin" id="tbl_ratio"></table></div>
+  </div>
+
 </td></tr></tbody></table>
 </div>
+
+<!-- Shared suggestion lists for the "ธนาคาร" / "ประเภทของเงินฝาก" fields in
+     every company card (below) - a native <input list> + <datalist> lets
+     the person type to search/filter AND still type any value freely (for
+     a bank or deposit type not in the list), rather than a closed <select>
+     that would block free text. -->
+<datalist id="thaiBankList">
+  <option value="ธนาคารกรุงเทพ จำกัด (มหาชน)">
+  <option value="ธนาคารกสิกรไทย จำกัด (มหาชน)">
+  <option value="ธนาคารกรุงไทย จำกัด (มหาชน)">
+  <option value="ธนาคารทหารไทยธนชาต จำกัด (มหาชน)">
+  <option value="ธนาคารไทยพาณิชย์ จำกัด (มหาชน)">
+  <option value="ธนาคารกรุงศรีอยุธยา จำกัด (มหาชน)">
+  <option value="ธนาคารเกียรตินาคินภัทร จำกัด (มหาชน)">
+  <option value="ธนาคารซีไอเอ็มบี ไทย จำกัด (มหาชน)">
+  <option value="ธนาคารทิสโก้ จำกัด (มหาชน)">
+  <option value="ธนาคารยูโอบี จำกัด (มหาชน)">
+  <option value="ธนาคารไทยเครดิต จำกัด (มหาชน)">
+  <option value="ธนาคารแลนด์ แอนด์ เฮ้าส์ จำกัด (มหาชน)">
+  <option value="ธนาคารออมสิน">
+  <option value="ธนาคารอาคารสงเคราะห์">
+  <option value="ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.)">
+  <option value="ธนาคารอิสลามแห่งประเทศไทย">
+  <option value="ธนาคารเพื่อการส่งออกและนำเข้าแห่งประเทศไทย (EXIM Bank)">
+  <option value="ธนาคารพัฒนาวิสาหกิจขนาดกลางและขนาดย่อมแห่งประเทศไทย (SME D Bank)">
+  <option value="ธนาคารซิตี้แบงก์">
+  <option value="ธนาคารสแตนดาร์ดชาร์เตอร์ด (ไทย) จำกัด (มหาชน)">
+  <option value="ธนาคารเมกะ สากลพาณิชย์ จำกัด (มหาชน)">
+  <option value="ธนาคารฮ่องกงและเซี่ยงไฮ้แบงกิ้งคอร์ปอเรชั่น จำกัด (HSBC)">
+  <option value="ธนาคารซูมิโตโม มิตซุย แบงกิ้ง คอร์ปอเรชั่น จำกัด (SMBC)">
+  <option value="ธนาคารมิซูโฮ จำกัด">
+  <option value="ธนาคารบีเอ็นพี พารีบาส์">
+  <option value="อื่นๆ (ระบุเอง)">
+</datalist>
+<datalist id="depositTypeList">
+  <option value="ออมทรัพย์">
+  <option value="กระแสรายวัน">
+  <option value="ฝากประจำ">
+  <option value="อื่นๆ (ระบุเอง)">
+</datalist>
 
 <footer class="note">
   Credit Application Form &mdash; Sangchai Group &middot; แบบฟอร์มนี้จัดทำขึ้นเพื่อความสะดวกในการกรอก แก้ไข และส่งออกข้อมูล
@@ -1391,23 +1493,52 @@
 /* ============================================================
    DATA MODEL
    ============================================================ */
-// YEARS are fixed POSITIONAL slot ids ("latest year / 2nd-latest / 3rd-
-// latest"), not literal calendar years - the financial-statement table
-// always has exactly 3 year columns, but which real years they represent
-// can shift per customer (e.g. a company whose fiscal year-end isn't 31
-// Dec, or whose latest filed statement is ปี 2567 rather than 2568).
-// YEAR_LABELS holds the current on-screen label for each slot and starts
-// at the "usual" assumption (this year / last year / year before); a
-// successful BOL import re-labels it to match that document's own years
-// (see handleBolFile) via updateFinTableYearHeaders() below, and
-// "ล้างข้อมูลที่นำเข้า" (clearBolImportedFields) puts it back.
+// YEARS are stable internal SLOT keys - every DOM id (is_xxx_y2568, ...)
+// and every stored value is keyed by these and they never change, even
+// though the *displayed* calendar year for a slot can be overridden by an
+// imported BOL PDF whose own report doesn't happen to cover the form's
+// default 3 years (see CURRENT_FIN_YEARS / setFinYears() below). Slot
+// "y2568" simply means "newest of the 3 columns", not literally the year
+// 2568.
 const YEARS = ['y2568','y2567','y2566'];
+// Buddhist calendar years currently displayed for slots y2568/y2567/y2566
+// respectively (newest first) - defaults to the form's original 3 years.
+// setFinYears() below is the only thing that should reassign this array;
+// everything else just reads it.
+let CURRENT_FIN_YEARS = [2568, 2567, 2566];
 const YEAR_LABELS = {y2568:'ปี 2568', y2567:'ปี 2567', y2566:'ปี 2566'};
-// '2568' from YEAR_LABELS.y2568 ('ปี 2568') - always reads the CURRENT
-// label, so this stays correct after YEAR_LABELS has been updated.
-function yearDigits(y){ return (YEAR_LABELS[y]||'').replace(/\D/g,''); }
-// '68' from YEAR_LABELS.y2568.
-function yearShort(y){ return yearDigits(y).slice(-2); }
+
+// "68 vs 67" / "67 vs 66" style 2-digit growth-column labels, derived from
+// CURRENT_FIN_YEARS so they track whatever years are actually on screen.
+function finGrowthHeaderLabels(){
+  const yy = n => String(n).slice(-2);
+  return [
+    `${yy(CURRENT_FIN_YEARS[0])} vs ${yy(CURRENT_FIN_YEARS[1])}`,
+    `${yy(CURRENT_FIN_YEARS[1])} vs ${yy(CURRENT_FIN_YEARS[2])}`
+  ];
+}
+
+// Re-points CURRENT_FIN_YEARS/YEAR_LABELS at a new set of 3 years (newest
+// first) and, unless told not to, re-renders just the <thead> of the
+// financial-statement/ratio tables to match - never touches <tbody>, so
+// any figures already typed or imported into the cells are left alone.
+function setFinYears(years, opts){
+  opts = opts || {};
+  CURRENT_FIN_YEARS = years.slice(0,3);
+  YEARS.forEach((k,i)=>{ YEAR_LABELS[k] = 'ปี ' + CURRENT_FIN_YEARS[i]; });
+  if(!opts.skipRender) refreshFinYearHeaders();
+}
+
+function refreshFinYearHeaders(){
+  const incomeThead = document.querySelector('#tbl_income thead');
+  if(incomeThead) incomeThead.innerHTML = finTableHeadHtml('งบกำไรขาดทุน');
+  const balanceThead = document.querySelector('#tbl_balance thead');
+  if(balanceThead) balanceThead.innerHTML = finTableHeadHtml('งบดุล');
+  const ratioThead = document.querySelector('#tbl_ratio thead');
+  if(ratioThead) ratioThead.innerHTML = ratioTableHeadHtml();
+  const note = document.getElementById('finYearNote');
+  if(note) note.innerHTML = `คอลัมน์ "${YEAR_LABELS.y2568.replace('ปี ','')} / ${YEAR_LABELS.y2567.replace('ปี ','')} / ${YEAR_LABELS.y2566.replace('ปี ','')}" (สีแดง) กรอกได้ &nbsp;|&nbsp; แถวตัวหนา และคอลัมน์ Growth Rate / อัตราส่วนทางการเงิน คำนวณอัตโนมัติจากตัวเลขที่กรอก`;
+}
 
 const incomeRows = [
   {key:'rev_main', label:'รายได้หลักจากการดำเนินงาน', type:'input', est:0, def:{y2568:2925115711,y2567:2292598210,y2566:2928387553}},
@@ -1440,10 +1571,10 @@ const balanceRows = [
 ];
 
 const sceHistDefault = [
-  {year:'2024',amount:3804914.65},{year:'2025',amount:6147317.99},{year:'2026',amount:1624538.41}
+  {year:'2026',amount:1624538.41},{year:'2025',amount:6147317.99},{year:'2024',amount:3804914.65}
 ];
 const scoHistDefault = [
-  {year:'ปี 2568',amount:981726.76},{year:'ปี 2569',amount:1450203.10}
+  {year:'ปี 2569',amount:1450203.10},{year:'ปี 2568',amount:981726.76}
 ];
 const scorpHistDefault = [];
 const scrHistDefault = [];
@@ -1451,8 +1582,7 @@ const scescrHistDefault = [];
 
 const generalDefault = {
   g_cust_th:'บริษัท จาร์ดีน เอ็นจิเนียริ่ง จำกัด', g_cust_en:'JARDINE ENGINEERING CO.,LTD.',
-  g_reg_no:'0105530034402', g_reg_date:'16/07/2530',
-  g_branch_type:'สำนักงานใหญ่', g_branch_detail:'',
+  g_date:'28/08/2569', g_reg_no:'0105530034402', g_reg_date:'16/07/2530',
   g_biz_type:'กิจกรรมงานวิศวกรรมและการให้คำปรึกษาทางด้านเทคนิคที่เกี่ยวข้อง',
   g_years_operating:'39 ปี 1 เดือน', g_biz_status:'ยังดำเนินกิจการอยู่',
   g_reg_capital_latest:'120,000,000 บาท',
@@ -1463,42 +1593,59 @@ const generalDefault = {
 };
 const sceDefault = {
   sce_code:'2100171', sce_affiliation:'SCE', sce_sales_rep:'ไพศาล / Project',
-  sce_requested:4500000, sce_credit_term:'60 วัน',
-  sce_collateral:0, sce_affiliated_credit:'-'
+  sce_orig_limit:8000000, sce_requested:-3500000, sce_credit_term:'60 วัน',
+  sce_collateral:0, sce_affiliated_credit:'-',
+  sce_used:691127.98, sce_billing_terms:'วางบิลทุกวันอังคาร', sce_payment_terms:'โอนเงินวันที่ 10',
+  sce_credit_established:'20/04/53 ตั้งประวัติเครดิต', sce_credit_days:60, sce_payment_range:'90-110',
+  sce_checks_on_hand:'-',
+  sce_returned_check:'-', sce_latest_outstanding:'SCE 5-6/69 ยอด 57,116.60 บาท รอบัญชีสอบถามรับชำระวันที่ 10/09/69'
 };
 const scoDefault = {
   sco_code:'1จ00027', sco_affiliation:'SCO', sco_sales_rep:'อัจฉรา / ซีเมนส์',
-  sco_requested:4500000, sco_credit_term:'60 วัน',
-  sco_collateral:0, sco_bankruptcy_check:'ไม่พบประวัติ', sco_rehab_check:'ไม่พบประวัติ'
+  sco_orig_limit:8000000, sco_requested:-3500000, sco_credit_term:'60 วัน',
+  sco_collateral:0, sco_bankruptcy_check:'ไม่พบประวัติ', sco_rehab_check:'ไม่พบประวัติ',
+  sco_used:0, sco_billing_terms:'วางบิลทุกวันอังคาร', sco_payment_terms:'โอนเงินวันที่ 10',
+  sco_credit_established:'ตั้งประวัติเครดิตก่อนปี 54', sco_credit_days:60, sco_payment_range:'90-120',
+  sco_checks_on_hand:'-',
+  sco_returned_check:'-', sco_latest_outstanding:'-'
 };
 const scorpDefault = {
   scorp_code:'', scorp_affiliation:'SCORP', scorp_sales_rep:'',
-  scorp_requested:0, scorp_credit_term:'',
-  scorp_collateral:0, scorp_affiliated_credit:'-'
+  scorp_orig_limit:0, scorp_requested:0, scorp_credit_term:'',
+  scorp_collateral:0, scorp_affiliated_credit:'-',
+  scorp_used:0, scorp_billing_terms:'', scorp_payment_terms:'',
+  scorp_credit_established:'', scorp_credit_days:0, scorp_payment_range:'',
+  scorp_checks_on_hand:'-',
+  scorp_returned_check:'-', scorp_latest_outstanding:''
 };
 const scrDefault = {
   scr_code:'', scr_affiliation:'SCR', scr_sales_rep:'',
-  scr_requested:0, scr_credit_term:'',
-  scr_collateral:0, scr_affiliated_credit:'-'
+  scr_orig_limit:0, scr_requested:0, scr_credit_term:'',
+  scr_collateral:0, scr_affiliated_credit:'-',
+  scr_used:0, scr_billing_terms:'', scr_payment_terms:'',
+  scr_credit_established:'', scr_credit_days:0, scr_payment_range:'',
+  scr_checks_on_hand:'-',
+  scr_returned_check:'-', scr_latest_outstanding:''
 };
 const scescrDefault = {
   scescr_code:'', scescr_affiliation:'SCE/SCR', scescr_sales_rep:'',
-  scescr_requested:0, scescr_credit_term:'',
-  scescr_collateral:0, scescr_affiliated_credit:'-'
+  scescr_orig_limit:0, scescr_requested:0, scescr_credit_term:'',
+  scescr_collateral:0, scescr_affiliated_credit:'-',
+  scescr_used:0, scescr_billing_terms:'', scescr_payment_terms:'',
+  scescr_credit_established:'', scescr_credit_days:0, scescr_payment_range:'',
+  scescr_checks_on_hand:'-',
+  scescr_returned_check:'-', scescr_latest_outstanding:''
 };
 const ccDefault = {
-  cc_product:'อุปกรณ์และวัสดุสำหรับงานวิศวกรรม',
-  cc_pp30_year:'69',
-  cc_pp30_detail:'(ม.ค. - พ.ค.) มียอดขายรวม 31.83 ลบ. เฉลี่ยเดือนละ 6.37 ลบ. มียอดซื้อรวม 23.07 ลบ. เฉลี่ยเดือนละ 4.61 ลบ.',
-  cc_bank_name:'ธนาคารกสิกรไทย', cc_bank_acc_type:'ออมทรัพย์', cc_bank_acc_no:'123-4-56789-0',
-  cc_bank_flow_detail:'เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.',
-  cc_main_customer_group:'ผู้รับเหมาก่อสร้าง / โรงงานอุตสาหกรรม',
-  fin_overview_revenue:'ภาพรวมผลการดำเนินงานของกิจการมีรายได้รวมจากการดำเนินงานในปี (68-66) อยู่ที่ 82.79 ลบ. , 80.47 ลบ. และ 78.03 ลบ.',
-  fin_overview_tax:'ผลการดำเนินงานตามงบสรรพากร : ในปี (68-66) มีกำไรอยู่ที่ (3.65) ลบ. , 0.03 ลบ. และ 5.93 ลบ. และส่วนของผู้ถือหุ้นเป็นบวก มีกำไรสะสมเป็นบวก',
-  fin_ratio_current_summary:'Current ratio ในปี 2568 เท่ากับ 3.67 เท่า เพิ่มขึ้นจากปี 2567 ที่เท่ากับ 2.20 เท่า',
-  fin_ratio_de_summary:'อัตราส่วน D/E ในปี 2568 เท่ากับ 0.75 เท่า ลดลงจากปี 2567 ที่เท่ากับ 1.48 เท่า',
-  fin_summary_detail:'ครั้งนี้ เห็นควรขออนุมัติวงเงินสินเชื่อเครดิตการค้า จำนวน 250,000 บาท ให้แก่ลูกค้าราย บริษัท สีโอ เพาเวอร์ ซัพพลาย จำกัด\n- หลักทรัพย์ค้ำประกัน : ไม่มี\n- เงื่อนไขอื่นๆ : ไม่มี',
+  cc_reason:'เนื่องจากมีการลดวงเงินประกันคุ้มครองลงจากเดิมมีวงเงินประกัน 9.56 ลบ ลดลงเหลือ 6.0 ลบ. จึงเห็นควรนำเสนอ "ลดวงเงิน" ตามรายละเอียดที่กล่าวด้านล่าง',
   sig_manager:'คุณถิรดา เงินมณีรุ่งโรจน์', sig_exec:'คุณวรพงศ์ อัศวนิเวศน์'
+};
+// ภ.พ.30 & บัญชีธนาคาร - one shared section for the whole application, not
+// duplicated per company set (see the standalone card right after cardSCORP).
+const bankInfoDefault = {
+  pp30_summary:'(ม.ค. - พ.ค.) มียอดขายรวม 31.83 ลบ. เฉลี่ยเดือนละ 6.37 ลบ. มียอดซื้อรวม 23.07 ลบ. เฉลี่ยเดือนละ 4.61 ลบ.',
+  bank_name:'ธนาคารกสิกรไทย จำกัด (มหาชน)', bank_account_type:'ออมทรัพย์', bank_account_no:'123-4-56789-0',
+  bank_summary:'เงินฝากเข้าเฉลี่ยเดือนละ 6.13 ลบ. ถอนออกเฉลี่ยเดือนละ 5.55 ลบ. ยอดคงเหลือทุกสิ้นเดือนเฉลี่ยเดือนละ 3.48 ลบ. ณ. 14/07/2569 มียอดเงินคงเหลือ 6.29 ลบ.'
 };
 
 /* ============================================================
@@ -1590,7 +1737,6 @@ async function saveBlobAs(filename, blob){
   return { status: "saved-legacy" };
 }
 
-
 /* Comma-formatted numeric text inputs used in the financial-statement tables
    (table.fin est/year cells) — type="text" so commas can be displayed, with
    live editing kept simple: raw digits on focus, formatted with commas on blur. */
@@ -1627,14 +1773,25 @@ function formatAllUsedInputs(){
 /* ============================================================
    BUILD FINANCIAL TABLES
    ============================================================ */
-function buildFinTable(tableId, rows, groupLabel, prefix){
-  const table = document.getElementById(tableId);
+// Builds just the <thead>...</thead> markup for the income/balance-sheet
+// tables (shared by the initial buildFinTable() below and by
+// refreshFinYearHeaders(), which re-renders only this part after a BOL
+// import changes CURRENT_FIN_YEARS - leaving <tbody> and everything typed
+// into it untouched).
+function finTableHeadHtml(groupLabel){
+  const g = finGrowthHeaderLabels();
   let html = '<thead><tr>';
   html += `<th style="text-align:left;min-width:220px;">${groupLabel}</th>`;
   html += `<th style="min-width:70px;">ประมาณการ<br>ปีปัจจุบัน</th>`;
-  YEARS.forEach(y=> html += `<th id="${tableId}_th_${y}" style="min-width:110px;">${YEAR_LABELS[y]}</th>`);
+  YEARS.forEach(y=> html += `<th style="min-width:110px;">${YEAR_LABELS[y]}</th>`);
   html += `<th colspan="2">Growth Rate (%)</th></tr>`;
-  html += `<tr><th></th><th></th><th></th><th></th><th></th><th id="${tableId}_th_g68">${yearShort(YEARS[0])} vs ${yearShort(YEARS[1])}</th><th id="${tableId}_th_g67">${yearShort(YEARS[1])} vs ${yearShort(YEARS[2])}</th></tr></thead><tbody>`;
+  html += `<tr><th></th><th></th><th></th><th></th><th></th><th>${g[0]}</th><th>${g[1]}</th></tr></thead>`;
+  return html;
+}
+
+function buildFinTable(tableId, rows, groupLabel, prefix){
+  const table = document.getElementById(tableId);
+  let html = finTableHeadHtml(groupLabel) + '<tbody>';
   rows.forEach(r=>{
     html += `<tr class="${r.type}">`;
     html += `<td class="label">${r.label}</td>`;
@@ -1653,6 +1810,19 @@ function buildFinTable(tableId, rows, groupLabel, prefix){
   table.innerHTML = html;
 }
 
+// Ratio-table row defs live here (not just inside buildRatioTable) so
+// refreshFinYearHeaders() -> ratioTableHeadHtml() doesn't need to know
+// about them; the head markup itself doesn't depend on the row list.
+function ratioTableHeadHtml(){
+  const g = finGrowthHeaderLabels();
+  let html = '<thead><tr>';
+  html += `<th style="text-align:left;min-width:260px;">อัตราส่วนทางการเงิน</th>`;
+  YEARS.forEach(y=> html += `<th style="min-width:110px;">${YEAR_LABELS[y]}</th>`);
+  html += `<th colspan="2">Growth Rate (%)</th></tr>`;
+  html += `<tr><th></th><th></th><th></th><th></th><th>${g[0]}</th><th>${g[1]}</th></tr></thead>`;
+  return html;
+}
+
 function buildRatioTable(){
   const table = document.getElementById('tbl_ratio');
   const ratioDefs = [
@@ -1661,11 +1831,7 @@ function buildRatioTable(){
     {key:'roe', label:'อัตราผลตอบแทนผู้ถือหุ้น : ROE (%)', unit:'%'},
     {key:'de', label:'อัตราส่วนหนี้สินต่อส่วนของผู้ถือหุ้น : D/E (เท่า)', unit:'เท่า'},
   ];
-  let html = '<thead><tr>';
-  html += `<th style="text-align:left;min-width:260px;">อัตราส่วนทางการเงิน</th>`;
-  YEARS.forEach(y=> html += `<th id="tbl_ratio_th_${y}" style="min-width:110px;">${YEAR_LABELS[y]}</th>`);
-  html += `<th colspan="2">Growth Rate (%)</th></tr>`;
-  html += `<tr><th></th><th></th><th></th><th></th><th id="tbl_ratio_th_g68">${yearShort(YEARS[0])} vs ${yearShort(YEARS[1])}</th><th id="tbl_ratio_th_g67">${yearShort(YEARS[1])} vs ${yearShort(YEARS[2])}</th></tr></thead><tbody>`;
+  let html = ratioTableHeadHtml() + '<tbody>';
   ratioDefs.forEach(r=>{
     html += `<tr><td class="label">${r.label}</td>`;
     YEARS.forEach(y=> html += `<td class="computed-cell" id="ratio_${r.key}_${y}">-</td>`);
@@ -1673,30 +1839,6 @@ function buildRatioTable(){
     html += `<td class="computed-cell" id="ratio_${r.key}_g67">-</td></tr>`;
   });
   table.innerHTML = html;
-}
-
-/* Updates the year <th> headers (and the growth-rate sub-headers / fin-note
-   text) of the income/balance/ratio tables IN-PLACE, without rebuilding the
-   tables - a full rebuild via buildFinTable()/buildRatioTable() would wipe
-   out any values already typed/imported into the <input> cells. Called
-   after YEAR_LABELS has been changed (BOL import re-labeling the 3 slots to
-   match that document's own years, or clearBolImportedFields() restoring
-   the previous labels). */
-function updateFinTableYearHeaders(){
-  ['tbl_income','tbl_balance','tbl_ratio'].forEach(tableId=>{
-    YEARS.forEach(y=>{
-      const th = document.getElementById(`${tableId}_th_${y}`);
-      if(th) th.textContent = YEAR_LABELS[y];
-    });
-    const g68 = document.getElementById(`${tableId}_th_g68`);
-    if(g68) g68.textContent = `${yearShort(YEARS[0])} vs ${yearShort(YEARS[1])}`;
-    const g67 = document.getElementById(`${tableId}_th_g67`);
-    if(g67) g67.textContent = `${yearShort(YEARS[1])} vs ${yearShort(YEARS[2])}`;
-  });
-  const note = document.getElementById('finNoteText');
-  if(note){
-    note.innerHTML = `คอลัมน์ "${YEAR_LABELS[YEARS[0]]} / ${yearDigits(YEARS[1])} / ${yearDigits(YEARS[2])}" (สีแดง) กรอกได้ &nbsp;|&nbsp; แถวตัวหนา และคอลัมน์ Growth Rate / อัตราส่วนทางการเงิน คำนวณอัตโนมัติจากตัวเลขที่กรอก`;
-  }
 }
 
 function computeFinRows(rows, prefix){
@@ -1802,41 +1944,6 @@ function getSelectedCompanies(){
   if(count>=5) set.add(getVal('g_company_5') || 'scorp');
   return set;
 }
-function updateBranchField(){
-  const wrap = document.getElementById('g_branch_detail_wrap');
-  if(wrap) wrap.style.display = (getVal('g_branch_type')==='สาขา') ? '' : 'none';
-}
-// Show/hide each half of the ภ.พ.30 & บัญชีธนาคาร card independently,
-// driven by the "มี ภ.พ.30 หรือไม่" / "มีบัญชีธนาคารหรือไม่" toggles above
-// it - a company may lack one or the other (or both). Hiding a half this
-// way (inline display:none) also keeps it out of the printed page, same
-// as the card's other screen-only controls.
-function updatePP30BankVisibility(){
-  const showPP30 = getVal('cc_has_pp30') !== 'no';
-  const showBank = getVal('cc_has_bank') !== 'no';
-  const pp30El = document.getElementById('cc_pp30_fields_wrap');
-  if(pp30El) pp30El.style.display = showPP30 ? '' : 'none';
-  const bankEl = document.getElementById('cc_bank_fields_wrap');
-  if(bankEl) bankEl.style.display = showBank ? '' : 'none';
-  // Bank account 2/3 stay hidden even while the section itself is shown,
-  // unless a file has already filled one in (or the user re-adds it) -
-  // see the "✕ ลบบัญชีนี้" handler and the Excel-import code below, both
-  // of which flip data-active to track this independently of showBank.
-  [2,3].forEach(function(n){
-    const block = document.getElementById('ccBankBlock'+n);
-    if(!block) return;
-    const active = block.dataset.active === '1';
-    block.style.display = (showBank && active) ? '' : 'none';
-  });
-}
-// "ประเภทเงินฝาก" is a free-text field with a datalist of common options
-// (see #bankAccTypeList) rather than a plain <select>, so typing a custom
-// value works directly in the same box - no separate "อื่นๆ (ระบุ)" field
-// needed. Kept as a named function since exportExcel() and others already
-// call it as the single source of truth for this value.
-function effectiveBankAccType(){
-  return getVal('cc_bank_acc_type');
-}
 function updateCreditScope(){
   const count = parseInt(getVal('g_credit_count') || '1', 10);
   const setDisp = (id, show)=>{ const el = document.getElementById(id); if(el) el.style.display = show ? '' : 'none'; };
@@ -1880,24 +1987,22 @@ function updateCreditScope(){
   layoutApprovalGrid();
 }
 
-/* When printing / exporting to PDF: page 1 is always just "ข้อมูลทั่วไปของ
-   ลูกค้า" + "หมายเหตุ เอกสารในการขอเครดิต" - the credit-limit sections
-   (SCE/SCR/SCE-SCR/SCO/SCORP) always start fresh on page 2, fitting 2 per
-   page from there (1 or 2 -> page 2 only, 3 -> page 2+3 (2+1), 4 -> page
-   2+3 (2+2), 5 -> page 2+3+4 (2+2+1)). "ผลการพิจารณาจากฝ่าย Credit Control"
-   has no break of its own, so it flows right after the last credit-limit
-   section and shares that same page when it fits (e.g. 1 company set: SCE
-   + Credit Control together on page 2). Cards always render in the same
-   fixed DOM order (SCE, SCR, SCE/SCR, SCO, SCORP) regardless of which
-   "ชุด" dropdown each company was picked in - only the VISIBLE ones count
-   toward pagination. */
+/* When printing / exporting to PDF, fit 2 credit-limit sections per page:
+   1 or 2 sections -> 1 page, 3 -> 2 pages (2+1), 4 -> 2 pages (2+2),
+   5 -> 3 pages (2+2+1). Cards always render in the same fixed DOM order
+   (SCE, SCR, SCE/SCR, SCO, SCORP) regardless of which "ชุด" dropdown each
+   company was picked in - only the VISIBLE ones count toward pagination. */
 function updatePrintPageBreaks(){
   const ids = ['cardSCE','cardSCR','cardSCESCR','cardSCO','cardSCORP'];
   const els = ids.map(id=> document.getElementById(id)).filter(Boolean);
   els.forEach(el=> el.classList.remove('page-break-before')); // clear stale state first
   const visible = els.filter(el=> el.style.display !== 'none');
+  // "ภ.พ.30 & บัญชีธนาคาร" now lives in its own shared card after the last
+  // company card (not duplicated inside every card), so company cards are
+  // back to their original size and 2 of them fit on one printed page -
+  // pair them up, forcing a break only before every 2nd visible card.
   visible.forEach((el, i)=>{
-    if(i%2===0) el.classList.add('page-break-before');
+    if(i>0 && i%2===0) el.classList.add('page-break-before');
   });
 }
 
@@ -1929,82 +2034,166 @@ function layoutApprovalGrid(){
   if(sigRight) sigRight.style.gridRow = row;
 }
 
-function syncBankAccName(){
-  // "ชื่อบัญชี" links automatically from the customer name, but only while
-  // the field is still empty - once the user types their own value here it
-  // is left alone (not force-overwritten) on every recalc.
-  const el = document.getElementById('cc_bank_acc_name');
-  if(el && !el.value) el.value = getVal('g_cust_th') || '';
+function composeBizDesc(){
+  const custName = getVal('g_cust_th') || 'บริษัท...';
+  const prefix = custName + ' ประกอบธุรกิจ ';
+  const prefixEl = document.getElementById('cc_business_desc_prefix');
+  if(prefixEl) prefixEl.textContent = prefix;
+  setVal('cc_business_desc', prefix + (getVal('cc_business_desc_detail') || ''));
+}
+function syncBizDescDetailFromBizType(){
+  setVal('cc_business_desc_detail', getVal('g_biz_type') || '');
+  composeBizDesc();
+}
+
+// ชื่อบัญชี (bank account name, in the shared ภ.พ.30 & บัญชีธนาคาร section)
+// mirrors "ชื่อลูกค้า" live, the same one-directional live-sync pattern
+// already used for cc_business_desc_detail <- g_biz_type (see
+// syncBizDescDetailFromBizType and its g_biz_type input listener below):
+// every time the customer name changes, the account-name field updates to
+// match, no button needed. setVal() doesn't dispatch input events, so any
+// code that sets g_cust_th programmatically (loadExampleData, BOL import)
+// must call this explicitly afterward.
+function syncBankAccountNameFromCustName(){
+  setVal('bank_account_name', getVal('g_cust_th') || '');
+}
+
+// Show/hide each half of the ภ.พ.30 & บัญชีธนาคาร card independently,
+// driven by the "มี ภ.พ.30 หรือไม่" / "มีบัญชีธนาคารหรือไม่" toggles above
+// it - a company may lack one or the other (or both). Hiding a half this
+// way (inline display:none) also keeps it out of the printed page, same
+// as the card's other screen-only controls.
+function updatePP30BankVisibility(){
+  const showPP30 = getVal('has_pp30') !== 'no';
+  const showBank = getVal('has_bank') !== 'no';
+  const pp30El = document.getElementById('pp30_fields_wrap');
+  if(pp30El) pp30El.style.display = showPP30 ? '' : 'none';
+  const bankEl = document.getElementById('bankFieldsOuter');
+  if(bankEl) bankEl.style.display = showBank ? '' : 'none';
+  // Bank account 2/3 stay hidden even while the section itself is shown,
+  // unless a file has already filled one in (or the user re-adds it) -
+  // see the "✕ ลบบัญชีนี้" handler and the Excel-import code below, both
+  // of which flip data-active to track this independently of showBank.
+  [2,3].forEach(function(n){
+    const block = document.getElementById('bankBlock'+n);
+    if(!block) return;
+    const active = block.dataset.active === '1';
+    block.style.display = (showBank && active) ? '' : 'none';
+  });
 }
 
 function recalcAll(){
-  // "วันที่" is always today's actual date at the moment the document is
-  // being prepared - never a value carried over from a loaded draft, an
-  // imported BOL PDF, or manual edit (the field is readonly on-screen) -
-  // so it is force-set here on every recalculation, like a =TODAY() cell.
-  setVal('g_date', thaiToday());
   updateCreditScope();
-  updateBranchField();
-  updatePP30BankVisibility();
-  syncBankAccName();
-  // Credit-limit sections no longer track an "existing" limit (this form is
-  // for new customers only, who by definition have none) - "วงเงินที่ขออนุมัติ
-  // ครั้งนี้" (requested) is the sole credit-limit figure, and the old
-  // total/over/remaining math that combined it with a prior limit is gone.
+  composeBizDesc();
   // SCE
-  const sceReq = num('sce_requested');
+  const sceOrig = num('sce_orig_limit'), sceReq = num('sce_requested'), sceTotal = sceOrig+sceReq;
+  setVal('sce_total', fmt(sceTotal));
   const sceColl = num('sce_collateral');
+  // "sce_used" is stored as a negative (or zero) draw-down amount
+  // (see formatUsedInput) - take the magnitude here so the over/remaining
+  // math works regardless of how it was entered or auto-filled.
+  const sceUsed = Math.abs(num('sce_used'));
+  const sceRawRemain = sceOrig - sceUsed;
+  const sceOver = sceRawRemain < 0 ? sceRawRemain : 0;
+  const sceRemain = sceRawRemain > 0 ? sceRawRemain : 0;
+  setVal('sce_over', sceOver? fmt(sceOver,2) : '-');
+  setVal('sce_remaining', sceRemain? fmt(sceRemain,2) : '-');
 
   // SCR
-  const scrReq = num('scr_requested');
+  const scrOrig = num('scr_orig_limit'), scrReq = num('scr_requested'), scrTotal = scrOrig+scrReq;
+  setVal('scr_total', fmt(scrTotal));
   const scrColl = num('scr_collateral');
+  // "scr_used" is stored as a negative (or zero) draw-down amount
+  // (see formatUsedInput) - take the magnitude here so the over/remaining
+  // math works regardless of how it was entered or auto-filled.
+  const scrUsed = Math.abs(num('scr_used'));
+  const scrRawRemain = scrOrig - scrUsed;
+  const scrOver = scrRawRemain < 0 ? scrRawRemain : 0;
+  const scrRemain = scrRawRemain > 0 ? scrRawRemain : 0;
+  setVal('scr_over', scrOver? fmt(scrOver,2) : '-');
+  setVal('scr_remaining', scrRemain? fmt(scrRemain,2) : '-');
 
   // SCE/SCR (combined)
-  const scescrReq = num('scescr_requested');
+  const scescrOrig = num('scescr_orig_limit'), scescrReq = num('scescr_requested'), scescrTotal = scescrOrig+scescrReq;
+  setVal('scescr_total', fmt(scescrTotal));
   const scescrColl = num('scescr_collateral');
+  // "scescr_used" is stored as a negative (or zero) draw-down amount
+  // (see formatUsedInput) - take the magnitude here so the over/remaining
+  // math works regardless of how it was entered or auto-filled.
+  const scescrUsed = Math.abs(num('scescr_used'));
+  const scescrRawRemain = scescrOrig - scescrUsed;
+  const scescrOver = scescrRawRemain < 0 ? scescrRawRemain : 0;
+  const scescrRemain = scescrRawRemain > 0 ? scescrRawRemain : 0;
+  setVal('scescr_over', scescrOver? fmt(scescrOver,2) : '-');
+  setVal('scescr_remaining', scescrRemain? fmt(scescrRemain,2) : '-');
 
   // SCO
-  const scoReq = num('sco_requested');
+  const scoOrig = num('sco_orig_limit'), scoReq = num('sco_requested'), scoTotal = scoOrig+scoReq;
+  setVal('sco_total', fmt(scoTotal));
   const scoColl = num('sco_collateral');
+  // "sco_used" is stored as a negative (or zero) draw-down amount
+  // (see formatUsedInput) - take the magnitude here so the over/remaining
+  // math works regardless of how it was entered or auto-filled.
+  const scoUsed = Math.abs(num('sco_used'));
+  const scoRawRemain = scoOrig - scoUsed;
+  const scoOver = scoRawRemain < 0 ? scoRawRemain : 0;
+  const scoRemain = scoRawRemain > 0 ? scoRawRemain : 0;
+  setVal('sco_over', scoOver? fmt(scoOver,2) : '-');
+  setVal('sco_remaining', scoRemain? fmt(scoRemain,2) : '-');
 
   // SCORP
-  const scorpReq = num('scorp_requested');
+  const scorpOrig = num('scorp_orig_limit'), scorpReq = num('scorp_requested'), scorpTotal = scorpOrig+scorpReq;
+  setVal('scorp_total', fmt(scorpTotal));
   const scorpColl = num('scorp_collateral');
+  // "scorp_used" is stored as a negative (or zero) draw-down amount
+  // (see formatUsedInput) - take the magnitude here so the over/remaining
+  // math works regardless of how it was entered or auto-filled.
+  const scorpUsed = Math.abs(num('scorp_used'));
+  const scorpRawRemain = scorpOrig - scorpUsed;
+  const scorpOver = scorpRawRemain < 0 ? scorpRawRemain : 0;
+  const scorpRemain = scorpRawRemain > 0 ? scorpRawRemain : 0;
+  setVal('scorp_over', scorpOver? fmt(scorpOver,2) : '-');
+  setVal('scorp_remaining', scorpRemain? fmt(scorpRemain,2) : '-');
 
   // "หลักประกัน / วงเงินรวม (คำนวณอัตโนมัติ)" - normally each company's own
-  // ratio (its own หลักประกันใหม่ over its own วงเงินที่ขออนุมัติ), but when
+  // ratio (its own หลักประกันใหม่ over its own วงเงินสินเชื่อรวม), but when
   // this credit request actually spans more than one company - "จำนวนชุด
-  // ข้อมูลวงเงินสินเชื่อ" > 1, e.g. requesting for SCE and SCR together in
-  // the same application - the ratio for EACH of those companies is judged
-  // against the whole request's COMBINED วงเงินที่ขออนุมัติ (the sum of
-  // every selected company's own requested amount) rather than each one in
-  // isolation, since the collateral is backing the multi-company request as
-  // a whole. Only the denominator changes this way; each company's own
-  // หลักประกันใหม่ numerator still comes from what was actually typed into
-  // that company's own field. With only 1 company selected this reduces to
-  // exactly the previous per-company behavior (denominator = that
-  // company's own requested amount). Mirrors the same fix in
-  // CA_Credit_Application_Form_116.html (there the denominator is each
-  // company's วงเงินสินเชื่อรวม = orig_limit+requested, since existing
-  // customers can already have a limit; here it's just requested, since a
-  // new customer by definition has none yet).
-  const collReqs = {sce:sceReq, scr:scrReq, scescr:scescrReq, sco:scoReq, scorp:scorpReq};
+  // ข้อมูลวงเงินสินเชื่อ" > 1, e.g. approving SCE and SCR together in the
+  // same request - the ratio for EACH of those companies is judged against
+  // the whole request's COMBINED วงเงินรวม (the sum of every selected
+  // company's own total) rather than each one in isolation, since the
+  // collateral is backing the multi-company request as a whole. Only the
+  // denominator changes this way; each company's own หลักประกันใหม่
+  // numerator still comes from what was actually typed into that company's
+  // own field. With only 1 company selected this reduces to exactly the
+  // previous per-company behavior (denominator = that company's own total).
+  const collTotals = {sce:sceTotal, scr:scrTotal, scescr:scescrTotal, sco:scoTotal, scorp:scorpTotal};
   const collAmounts = {sce:sceColl, scr:scrColl, scescr:scescrColl, sco:scoColl, scorp:scorpColl};
   const selectedForColl = getSelectedCompanies();
-  const combinedCreditReq = selectedForColl.size > 1
-    ? Array.from(selectedForColl).reduce((sum,p)=> sum + (collReqs[p]||0), 0)
+  const combinedCreditTotal = selectedForColl.size > 1
+    ? Array.from(selectedForColl).reduce((sum,p)=> sum + (collTotals[p]||0), 0)
     : null;
   ['sce','scr','scescr','sco','scorp'].forEach(p=>{
-    const denom = (combinedCreditReq!==null && selectedForColl.has(p)) ? combinedCreditReq : collReqs[p];
+    const denom = (combinedCreditTotal!==null && selectedForColl.has(p)) ? combinedCreditTotal : collTotals[p];
     setVal(p+'_collateral_pct', denom? fmtPct(collAmounts[p]/denom) : '-');
   });
 
   // summary table
+  document.getElementById('sum_sce_orig').textContent = fmt(sceOrig)+' บาท';
   document.getElementById('sum_sce_req').textContent = fmt(sceReq)+' บาท';
+  document.getElementById('sum_sce_total').textContent = fmt(sceTotal)+' บาท';
+  document.getElementById('sum_scr_orig').textContent = fmt(scrOrig)+' บาท';
   document.getElementById('sum_scr_req').textContent = fmt(scrReq)+' บาท';
+  document.getElementById('sum_scr_total').textContent = fmt(scrTotal)+' บาท';
+  document.getElementById('sum_scescr_orig').textContent = fmt(scescrOrig)+' บาท';
   document.getElementById('sum_scescr_req').textContent = fmt(scescrReq)+' บาท';
+  document.getElementById('sum_scescr_total').textContent = fmt(scescrTotal)+' บาท';
+  document.getElementById('sum_sco_orig').textContent = fmt(scoOrig)+' บาท';
   document.getElementById('sum_sco_req').textContent = fmt(scoReq)+' บาท';
+  document.getElementById('sum_sco_total').textContent = fmt(scoTotal)+' บาท';
+  document.getElementById('sum_scorp_orig').textContent = fmt(scorpOrig)+' บาท';
   document.getElementById('sum_scorp_req').textContent = fmt(scorpReq)+' บาท';
+  document.getElementById('sum_scorp_total').textContent = fmt(scorpTotal)+' บาท';
 
   // financial tables
   const incomeResolved = computeFinRows(incomeRows, 'is');
@@ -2044,146 +2233,38 @@ function initCreditTermSync(){
     if(daysEl) daysEl.addEventListener('input', ()=> syncCreditTermFromDays(prefix));
     if(termEl) termEl.addEventListener('input', ()=> syncCreditDaysFromTerm(prefix));
   });
+  const bizTypeEl = document.getElementById('g_biz_type');
+  if(bizTypeEl) bizTypeEl.addEventListener('input', syncBizDescDetailFromBizType);
+  const custThEl = document.getElementById('g_cust_th');
+  if(custThEl) custThEl.addEventListener('input', syncBankAccountNameFromCustName);
 }
 
-// The 5 "compute*" functions below each return the ready-made sentence for
-// one field (or null when the source data isn't filled in yet enough to
-// compute it) - no setVal, no alert. syncAllFinTextFields() (bound to the
-// single combined button above "สรุปผลการดำเนินงาน") calls all 5, fills in
-// whichever came back non-null, and reports the rest in one alert instead of
-// firing a separate popup per field.
-
-// Pulls the "รายได้รวม" (total revenue) row of the ผลการดำเนินงาน (income
-// statement) table live into a ready-made "ภาพรวมผลการดำเนินงานของกิจการ"
-// sentence.
-function computeOverviewRevenueText(){
-  const raw = YEARS.map(y => (getVal(`is_rev_total_${y}`) || '').trim());
-  if(raw.some(v => v==='' || v==='-')) return null;
-  const vals = YEARS.map(y => num(`is_rev_total_${y}`));
-  const yy = YEARS.map(y => yearShort(y)); // e.g. 'y2568' -> '68' (follows current YEAR_LABELS)
-  const parts = vals.map(v => `${(v/1e6).toFixed(2)} ลบ.`);
-  const valueText = parts.length > 1
-    ? parts.slice(0, -1).join(' , ') + ' และ ' + parts[parts.length - 1]
-    : parts[0];
-  return `ภาพรวมผลการดำเนินงานของกิจการมีรายได้รวมจากการดำเนินงานในปี (${yy[0]}-${yy[yy.length-1]}) อยู่ที่ ${valueText}`;
-}
-
-// Formats a millions-of-baht figure the way these summary sentences show a
-// loss: parenthesised without a minus sign (e.g. -3,650,000 -> "(3.65) ลบ."),
-// matching the accounting convention the user's own example text used.
-function fmtMbSigned(v){
-  const mb = (Math.abs(v)/1e6).toFixed(2);
-  return v < 0 ? `(${mb}) ลบ.` : `${mb} ลบ.`;
-}
-
-// Pulls "กำไร (ขาดทุน) สุทธิ" (net profit, 3 years) from the income statement
-// plus the latest year's "รวมส่วนของผู้ถือหุ้น" / "กำไร (ขาดทุน) สะสม" signs
-// from the balance sheet into a ready-made "ผลการดำเนินงานตามงบสรรพากร"
-// sentence.
-function computeOverviewTaxText(){
-  const rawProfit = YEARS.map(y => (getVal(`is_net_profit_${y}`) || '').trim());
-  const y0 = YEARS[0];
-  const rawEquity = (getVal(`bs_total_equity_${y0}`) || '').trim();
-  const rawRetained = (getVal(`bs_retained_earnings_${y0}`) || '').trim();
-  if(rawProfit.some(v => v==='' || v==='-')) return null;
-  if(rawEquity==='' || rawEquity==='-' || rawRetained==='' || rawRetained==='-') return null;
-  const vals = YEARS.map(y => num(`is_net_profit_${y}`));
-  const yy = YEARS.map(y => yearShort(y));
-  const parts = vals.map(fmtMbSigned);
-  const valueText = parts.length > 1
-    ? parts.slice(0, -1).join(' , ') + ' และ ' + parts[parts.length - 1]
-    : parts[0];
-  const equityText = num(`bs_total_equity_${y0}`) >= 0 ? 'ส่วนของผู้ถือหุ้นเป็นบวก' : 'ส่วนของผู้ถือหุ้นเป็นลบ';
-  const retainedText = num(`bs_retained_earnings_${y0}`) >= 0 ? 'มีกำไรสะสมเป็นบวก' : 'มีกำไรสะสมเป็นลบ';
-  return `ผลการดำเนินงานตามงบสรรพากร : ในปี (${yy[0]}-${yy[yy.length-1]}) มีกำไรอยู่ที่ ${valueText} และ${equityText} ${retainedText}`;
-}
-
-// Both ratio-summary computes below read the already-computed figures that
-// computeRatios() (see buildRatioTable/computeRatios above) stashes on
-// window['_ratio_'+year] every time the financials recalculate, rather than
-// re-deriving Current Ratio / D/E themselves - so the sentence always
-// matches exactly what the "อัตราส่วนทางการเงิน" table on screen shows.
-function ratioDirectionWord(cur, prev){
-  if(cur > prev) return 'เพิ่มขึ้น';
-  if(cur < prev) return 'ลดลง';
-  return 'คงที่';
-}
-function computeRatioCurrentText(){
-  const y0 = YEARS[0], y1 = YEARS[1];
-  const r0 = window['_ratio_'+y0], r1 = window['_ratio_'+y1];
-  const cur = r0 ? r0.current_ratio : null, prev = r1 ? r1.current_ratio : null;
-  if(cur===null || cur===undefined || prev===null || prev===undefined) return null;
-  return `Current ratio ในปี ${yearDigits(y0)} เท่ากับ ${cur.toFixed(2)} เท่า ${ratioDirectionWord(cur,prev)}จากปี ${yearDigits(y1)} ที่เท่ากับ ${prev.toFixed(2)} เท่า`;
-}
-function computeRatioDeText(){
-  const y0 = YEARS[0], y1 = YEARS[1];
-  const r0 = window['_ratio_'+y0], r1 = window['_ratio_'+y1];
-  const cur = r0 ? r0.de : null, prev = r1 ? r1.de : null;
-  if(cur===null || cur===undefined || prev===null || prev===undefined) return null;
-  return `อัตราส่วน D/E ในปี ${yearDigits(y0)} เท่ากับ ${cur.toFixed(2)} เท่า ${ratioDirectionWord(cur,prev)}จากปี ${yearDigits(y1)} ที่เท่ากับ ${prev.toFixed(2)} เท่า`;
-}
-
-// Pulls the customer name and each requested credit-limit amount - across
-// whichever companies (SCE/SCR/SCE-SCR/SCO/SCORP) are currently in scope,
-// per getSelectedCompanies() - into a ready-made "สรุปความเห็น / ข้อเสนอการ
-// อนุมัติวงเงิน" text. Repeats the full "ครั้งนี้ เห็นควรขออนุมัติ..."
-// sentence once per company that actually has a requested amount (each
-// naming its own company code and amount), so 1 company -> 1 line, 2
-// companies -> 2 lines, etc., rather than one combined-total line with a
-// separate breakdown underneath. Collateral/other conditions are left as
-// the "ไม่มี" defaults, same as the static template, since there's no live
-// field this form tracks for those.
-function computeFinSummaryText(){
-  const labelMap = {scescr:'SCE/SCR'};
-  const amounts = Array.from(getSelectedCompanies())
-    .map(prefix => ({label: labelMap[prefix] || prefix.toUpperCase(), amt: num(prefix+'_requested')}))
-    .filter(a => a.amt > 0);
-  if(!amounts.length) return null;
-  const custName = getVal('g_cust_th') || '[ระบุชื่อลูกค้า]';
-  const lines = [
-    ...amounts.map(a => `ครั้งนี้ เห็นควรขออนุมัติวงเงินสินเชื่อเครดิตการค้า ใน ${a.label} จำนวน ${fmt(a.amt)} บาท ให้แก่ลูกค้าราย ${custName}`),
-    '- หลักทรัพย์ค้ำประกัน : ไม่มี',
-    '- เงื่อนไขอื่นๆ : ไม่มี',
-  ];
-  return lines.join('\n');
-}
-
-// The single "ดึงข้อความอัตโนมัติทั้งหมด" button (header of "สรุปผลการ
-// ดำเนินงาน") that used to be 5 separate per-field buttons. Fills every
-// field whose source data is ready, and reports - in one alert, not five -
-// which ones still need the underlying figures filled in first.
-function syncAllFinTextFields(){
-  const targets = [
-    {id:'fin_overview_revenue', label:'ภาพรวมผลการดำเนินงานของกิจการ (รายได้รวมในงบกำไรขาดทุนไม่ครบ 3 ปี)', compute:computeOverviewRevenueText},
-    {id:'fin_overview_tax', label:'ผลการดำเนินงานตามงบสรรพากร (กำไรสุทธิ/งบดุลปีล่าสุดไม่ครบ)', compute:computeOverviewTaxText},
-    {id:'fin_ratio_current_summary', label:'สรุป Current Ratio (คำนวณไม่ได้ กรุณากรอกงบดุลให้ครบ)', compute:computeRatioCurrentText},
-    {id:'fin_ratio_de_summary', label:'สรุปอัตราส่วน D/E (คำนวณไม่ได้ กรุณากรอกงบดุลให้ครบ)', compute:computeRatioDeText},
-    {id:'fin_summary_detail', label:'สรุปความเห็น / ข้อเสนอการอนุมัติวงเงิน (ยังไม่ได้กรอกจำนวนที่ขออนุมัติ)', compute:computeFinSummaryText},
-  ];
-  const missing = [];
-  targets.forEach(t=>{
-    const text = t.compute();
-    if(text){ setVal(t.id, text); } else { missing.push(t.label); }
-  });
-  if(missing.length){
-    alert('ดึงข้อความอัตโนมัติสำเร็จบางส่วน - ช่องต่อไปนี้ยังขาดข้อมูลตั้งต้น กรุณากรอกก่อนแล้วกดปุ่มนี้อีกครั้ง หรือกรอกเองในช่องนั้น:\n' + missing.map(m=>'- '+m).join('\n'));
-  }
-}
 function syncExecNote(company){
   const labelMap = {scescr:'SCE/SCR'};
   const label = labelMap[company] || company.toUpperCase();
-  const req = num(company+'_requested');
-  const creditTerm = (getVal(company+'_credit_term') || '').trim();
-  let text = `อนุมัติวงเงินสินเชื่อให้ลูกค้าใหม่ใน ${label} จำนวน ${fmt(req)} บาท`;
-  if(creditTerm) text += ` เครดิต ${creditTerm}`;
+  const name = getVal('g_cust_th') || 'บริษัท...';
+  const orig = num(company+'_orig_limit');
+  const total = orig + num(company+'_requested');
+  let text;
+  if(total < orig && Math.abs(total) < 0.005){
+    // Decreased all the way to zero - the credit line itself is being
+    // cancelled, not just reduced, so this gets its own wording (and no
+    // "new total" figure, since there isn't one).
+    text = `อนุมัติยกเลิกวงเงินใน ${label} เดิม ${fmt(orig)} บาท เป็นลูกค้าเงินสด`;
+  } else if(total > orig){
+    text = `อนุมัติเพิ่มวงเงินใน ${label} เดิม ${fmt(orig)} บาท เป็น ${fmt(total)} บาท`;
+  } else if(total < orig){
+    text = `อนุมัติลดวงเงินใน ${label} เดิม ${fmt(orig)} บาท คงเหลือ ${fmt(total)} บาท`;
+  } else {
+    text = `อนุมัติคงวงเงินใน ${label} เดิม ${fmt(orig)} บาท คงเหลือ ${fmt(total)} บาท`;
+  }
   setVal('ex_'+company+'_note', text);
 }
-// The single "ดึงข้อความอัตโนมัติ" button in the "ผลการอนุมัติ (ผู้บริหาร)"
-// header - used to be one button per company card. Fills the exec-approval
-// note for every company currently in scope (same set the form already
-// shows/hides cards for), rather than requiring one click per card.
+// Single combined button in the "ผลการอนุมัติ (ผู้บริหาร)" header runs the
+// auto-text generator for every company set currently shown, instead of
+// needing a separate click per company card.
 function syncAllExecNotes(){
-  getSelectedCompanies().forEach(company=> syncExecNote(company));
+  getSelectedCompanies().forEach(prefix=> syncExecNote(prefix));
 }
 
 /* ============================================================
@@ -2235,6 +2316,7 @@ function applyState(state){
   if(state.scescrHist) loadHist('scescr', state.scescrHist);
   if(state.scoHist) loadHist('sco', state.scoHist);
   if(state.scorpHist) loadHist('scorp', state.scorpHist);
+  updatePP30BankVisibility();
   formatAllFinInputs();
   formatAllUsedInputs();
   recalcAll();
@@ -2248,6 +2330,8 @@ function loadExampleData(){
   Object.entries(scoDefault).forEach(([k,v])=>setVal(k,v));
   Object.entries(scorpDefault).forEach(([k,v])=>setVal(k,v));
   Object.entries(ccDefault).forEach(([k,v])=>setVal(k,v));
+  Object.entries(bankInfoDefault).forEach(([k,v])=>setVal(k,v));
+  syncBizDescDetailFromBizType();
   incomeRows.filter(r=>r.type==='input').forEach(r=> YEARS.forEach(y=> setVal(`is_${r.key}_${y}`, r.def[y])));
   balanceRows.filter(r=>r.type==='input').forEach(r=> YEARS.forEach(y=> setVal(`bs_${r.key}_${y}`, r.def[y])));
   incomeRows.forEach(r=> setVal(`is_${r.key}_est`, r.est||0));
@@ -2257,12 +2341,14 @@ function loadExampleData(){
   loadHist('scescr', scescrHistDefault);
   loadHist('sco', scoHistDefault);
   loadHist('scorp', scorpHistDefault);
-  setChecked('doc6', true);
+  setChecked('doc3', true);
   CREDIT_TERM_PREFIXES.forEach(p=> setVal('an_'+p+'_note',''));
   syncExecNote('sce'); syncExecNote('scr'); syncExecNote('scescr'); syncExecNote('sco'); syncExecNote('scorp');
   // "วันที่" should always be today's actual date, not the fixed demo value
   // in generalDefault - refresh it every time example data is (re)loaded.
   setVal('g_date', thaiToday());
+  syncBankAccountNameFromCustName();
+  updatePP30BankVisibility();
   formatAllFinInputs();
   formatAllUsedInputs();
   recalcAll();
@@ -2273,6 +2359,10 @@ function clearForm(){
   document.querySelectorAll('input[type=text], input[type=number], textarea').forEach(el=> el.value='');
   document.querySelectorAll('input[type=checkbox], input[type=radio]').forEach(el=> el.checked=false);
   document.querySelectorAll('select').forEach(el=> el.selectedIndex=0);
+  // has_pp30/has_bank just got reset to "ไม่มี" (index 0) above, but since
+  // that was done programmatically (no change event fires), the two field
+  // groups won't re-hide on their own - do it explicitly.
+  updatePP30BankVisibility();
   // "สังกัดลูกค้า" is fixed by which company section it is (not customer-
   // specific data to clear out) - keep it auto-filled after clearing, same
   // as the page's own static default when first loaded.
@@ -2298,6 +2388,15 @@ function clearForm(){
   formatAllFinInputs();
   formatAllUsedInputs();
   recalcAll();
+  // A previously-imported BOL PDF may have switched the table year headers
+  // away from the default 3 years (see setFinYears()) - a full form clear
+  // should put them back too, same reasoning as clearBolImportedFields().
+  setFinYears([2568, 2567, 2566]);
+  // A full form clear also invalidates any pending "undo last BOL import"
+  // state - there's nothing left to selectively undo once everything has
+  // already been wiped.
+  lastBolFilledIds = [];
+  lastBolYearsSnapshot = null;
 }
 
 /* ============================================================
@@ -2312,7 +2411,7 @@ async function exportExcel(){
   // Colors mirror the on-screen/print theme (--brand, --brand-dark,
   // --brand-light, --gray-bg, --border) so the exported workbook reads as
   // the same document as the PDF, not a plain data dump.
-  const COL = {brand:'FFE91E63', brandDark:'FF880E4F', brandLight:'FFFCE4EC', gray:'FFF3F4F6', border:'FFD7DBE0', white:'FFFFFFFF'};
+  const COL = {brand:'FF1565C0', brandDark:'FF0D3D78', brandLight:'FFE6EEFB', gray:'FFF3F4F6', border:'FFD7DBE0', white:'FFFFFFFF'};
   const thinB = {style:'thin', color:{argb:COL.border}};
   const boxBorder = {top:thinB, left:thinB, bottom:thinB, right:thinB};
   const NUMFMT = '#,##0.00';
@@ -2370,14 +2469,14 @@ async function exportExcel(){
     r++;
   }
 
-  mergeRow('Credit Application - พิจารณาขอเครดิต (ลูกค้าใหม่)', styleTitle, 22);
+  mergeRow('Credit Application - พิจารณาทบทวนวงเงินเครดิต', styleTitle, 22);
   mergeRow('Sangchai Group', styleSubtitle, 18);
   r++;
 
   mergeRow('ข้อมูลทั่วไปของลูกค้า', styleSectionHeader, 20);
   fieldRow([{label:'ชื่อลูกค้า', value:getVal('g_cust_th')}, {label:'วันที่', value:getVal('g_date')}]);
   wideFieldRow('Customer Name (English)', getVal('g_cust_en'));
-  fieldRow([{label:'เลขทะเบียนนิติบุคคล', value:getVal('g_reg_no')}, {label:'วันที่จดทะเบียน', value:getVal('g_reg_date')}, {label:'สำนักงานใหญ่ / สาขา', value: getVal('g_branch_type') + ((getVal('g_branch_type')==='สาขา' && getVal('g_branch_detail')) ? (' - ' + getVal('g_branch_detail')) : '')}]);
+  fieldRow([{label:'เลขทะเบียนนิติบุคคล', value:getVal('g_reg_no')}, {label:'วันที่จดทะเบียน', value:getVal('g_reg_date')}]);
   wideFieldRow('ประเภทธุรกิจ', getVal('g_biz_type'));
   fieldRow([{label:'จำนวนปีที่ดำเนินกิจการ', value:getVal('g_years_operating')}, {label:'สถานะกิจการ', value:getVal('g_biz_status')}, {label:'ทุนจดทะเบียนล่าสุด', value:getVal('g_reg_capital_latest')}]);
   wideFieldRow('ที่ตั้ง (กระทรวง)', getVal('g_address'), {height:30});
@@ -2386,13 +2485,16 @@ async function exportExcel(){
   fieldRow([{label:'ตรวจสอบสถานะฟื้นฟูลูกหนี้', value:getVal('g_rehab_check')}]);
   r++;
 
-  mergeRow('หมายเหตุ เอกสารในการขอเครดิต', styleSectionHeader, 20);
+  mergeRow('เอกสารประกอบ & หลักเกณฑ์การประเมิน', styleSectionHeader, 20);
   {
-    const leftItems = [['doc1','หนังสือจดทะเบียนของบริษัทฯ'],['doc2','หนังสือรับรองของกระทรวงพาณิชย์'],['doc3','หนังสือแสดงการจดทะเบียนภาษีมูลค่าเพิ่ม (ภพ.20)'],['doc4','สำเนาบัตรประชาชนและทะเบียนบ้านของผู้มีอำนาจลงนาม'],['doc5','เอกสารแสดงรายได้ ภ.พ.30']];
-    const rightItems = [['doc6','STATEMENT ย้อนหลัง 3-6 เดือน'],['doc7','ระเบียบการวางบิลรับเช็ค'],['doc8','ที่อยู่และแผนที่บริษัท/ห้างหุ้นส่วน'],['doc9','เอกสาร BOL (Corpus X)'],['doc10','รูปถ่ายกิจการ']];
-    const maxItems = Math.max(leftItems.length, rightItems.length);
+    const l1 = ws1.getCell(r,1); ws1.mergeCells(r,1,r,3); l1.value='หมายเหตุ เอกสารในการทบทวนวงเงิน'; styleSubHeader(l1);
+    const l2 = ws1.getCell(r,4); ws1.mergeCells(r,4,r,6); l2.value='หลักเกณฑ์การประเมิน'; styleSubHeader(l2);
+    r++;
+    const docItems = [['doc1','เอกสารแสดงรายได้ ภ.พ.30'],['doc2','เอกสาร BOL (Corpus X)'],['doc3','STATEMENT ย้อนหลัง 3-6 เดือน'],['doc4','รูปถ่ายกิจการ']];
+    const critItems = [['crit1','ขาดการติดต่อซื้อขายนานกว่า 12 เดือน'],['crit2','ขาดทุนสุทธิ 2 ปี ติดต่อกัน'],['crit3','มีประวัติการชำระล่าช้า'],['crit4','1 ปีล่าสุด มีขาดทุนสะสม / ส่วนของผู้ถือหุ้นติดลบ'],['crit5', `ภายในระยะเวลา 1 ปี ที่ผ่านมา มีเช็คคืนทางการค้า ${getVal('crit5n')||0} ฉบับ`]];
+    const maxItems = Math.max(docItems.length, critItems.length);
     for(let i=0;i<maxItems;i++){
-      const d = leftItems[i], c = rightItems[i];
+      const d = docItems[i], c = critItems[i];
       const dc = ws1.getCell(r,1); ws1.mergeCells(r,1,r,3);
       dc.value = d? (getChecked(d[0])?'☑ ':'☐ ')+d[1] : '';
       styleValue(dc);
@@ -2405,16 +2507,28 @@ async function exportExcel(){
   r++;
 
   function pushCompanySection(prefix, label){
-    mergeRow(`ขอวงเงินสินเชื่อ - ${label}`, styleSectionHeader, 20);
+    mergeRow(`ข้อมูลวงเงินสินเชื่อ — ${label}`, styleSectionHeader, 20);
     fieldRow([{label:'รหัสลูกค้า', value:getVal(prefix+'_code')}, {label:'สังกัดลูกค้า', value:getVal(prefix+'_affiliation')}, {label:'ชื่อพนักงานขาย', value:getVal(prefix+'_sales_rep')}]);
     fieldRow([
+      {label:'วงเงินสินเชื่อเดิม (บาท)', value:num(prefix+'_orig_limit'), numFmt:NUMFMT},
       {label:'วงเงินที่ขออนุมัติครั้งนี้ (บาท)', value:num(prefix+'_requested'), numFmt:NUMFMT},
-      {label:'ระยะเวลาเครดิต', value:getVal(prefix+'_credit_term')},
-      {label:'หลักประกันใหม่ (บาท)', value:num(prefix+'_collateral'), numFmt:NUMFMT},
+      {label:'วงเงินสินเชื่อรวม (บาท)', value:num(prefix+'_orig_limit')+num(prefix+'_requested'), numFmt:NUMFMT},
     ]);
     fieldRow([
+      {label:'ระยะเวลาเครดิต', value:getVal(prefix+'_credit_term')},
+      {label:'หลักประกันใหม่ (บาท)', value:num(prefix+'_collateral'), numFmt:NUMFMT},
       {label:'หลักประกัน / วงเงินรวม', value:getVal(prefix+'_collateral_pct')},
-      {label:'บริษัทในเครือที่มีสินเชื่อ', value:getVal(prefix+'_affiliated_credit')||'-'},
+    ]);
+    fieldRow([{label:'บริษัทในเครือที่มีสินเชื่อ', value:getVal(prefix+'_affiliated_credit')||'-'}]);
+
+    // "used" is stored as a negative draw-down amount (see formatUsedInput) -
+    // mirror the same over/remaining math as recalcAll() so the export
+    // matches what's shown on screen (remaining clamped at 0 when over-limit).
+    const usedRaw = num(prefix+'_used');
+    fieldRow([
+      {label:'จำนวนที่ใช้ไป (บาท)', value:usedRaw, numFmt:NUMFMT},
+      {label:'เกินวงเงิน (บาท)', value:Math.min(0, num(prefix+'_orig_limit')+usedRaw), numFmt:NUMFMT},
+      {label:'คงเหลือ (บาท)', value:Math.max(0, num(prefix+'_orig_limit')+usedRaw), numFmt:NUMFMT},
     ]);
 
     const histRows = document.querySelectorAll(`#${prefix}_hist_table tbody tr`);
@@ -2432,57 +2546,62 @@ async function exportExcel(){
       });
     }
 
+    fieldRow([{label:'ระเบียบวางบิล', value:getVal(prefix+'_billing_terms')}, {label:'ระเบียบชำระเงิน', value:getVal(prefix+'_payment_terms')}, {label:'ตั้งประวัติเครดิต', value:getVal(prefix+'_credit_established')}]);
+    fieldRow([{label:'ระยะเวลาเครดิต (วัน)', value:getVal(prefix+'_credit_days')}, {label:'ชำระหนี้อยู่ในช่วง (วัน)', value:getVal(prefix+'_payment_range')}, {label:'เช็คในมือ', value:getVal(prefix+'_checks_on_hand')||'-'}]);
+    fieldRow([{label:'ประวัติเช็คคืน', value:getVal(prefix+'_returned_check')}]);
+    wideFieldRow('ยอดค้างชำระล่าสุด', getVal(prefix+'_latest_outstanding'), {height:24});
     r++;
   }
   companyDefs.forEach(([prefix,label])=>{ if(selectedCompanies.has(prefix)) pushCompanySection(prefix,label); });
+
+  // ภ.พ.30 & บัญชีธนาคาร - one shared section for the whole application
+  // (not duplicated per company set), matching the standalone card in the
+  // on-screen form right after the last company card.
+  mergeRow('ภ.พ.30 & บัญชีธนาคาร', styleSectionHeader, 20);
+  // Match the on-screen "มี ภ.พ.30 หรือไม่" / "มีบัญชีธนาคารหรือไม่" toggles -
+  // skip exporting either half when it's marked "ไม่มี", same as it being
+  // hidden on screen/print.
+  if(getVal('has_pp30') !== 'no'){
+    wideFieldRow('ภ.พ.30', getVal('pp30_summary'), {height:24});
+  }
+  if(getVal('has_bank') !== 'no'){
+    // Account 1 always exports; accounts 2/3 only when the user actually
+    // filled one in (mirrors bankBlockN.dataset.active on screen).
+    [1,2,3].forEach(function(idx){
+      if(idx>1){
+        var block = document.getElementById('bankBlock'+idx);
+        if(!block || block.dataset.active !== '1') return;
+        mergeRow('บัญชีธนาคารที่ ' + idx, styleSubHeader, 16);
+      }
+      var suf = idx===1 ? '' : ('_'+idx);
+      fieldRow([{label:'ธนาคาร', value:getVal('bank_name'+suf)||'-'}, {label:'ประเภทของเงินฝาก', value:getVal('bank_account_type'+suf)||'-'}, {label:'ชื่อบัญชี', value:getVal('bank_account_name'+suf)||'-'}]);
+      fieldRow([{label:'เลขที่บัญชี', value:getVal('bank_account_no'+suf)||'-'}]);
+      wideFieldRow('สรุปเงินฝาก-ถอน', getVal('bank_summary'+suf), {height:24});
+    });
+  }
+  r++;
 
   // Overall summary table - matches the .summary-table that appears once,
   // right before the signature section, in the printed PDF.
   mergeRow('สรุปวงเงินสินเชื่อ', styleSectionHeader, 20);
   {
-    ['บริษัท','วงเงินที่ขออนุมัติครั้งนี้'].forEach((h,i)=>{ const c=ws1.getCell(r,i+1); c.value=h; styleTableHeader(c); });
+    ['บริษัท','วงเงินสินเชื่อเดิม','วงเงินที่ขออนุมัติครั้งนี้','วงเงินสินเชื่อรวม'].forEach((h,i)=>{ const c=ws1.getCell(r,i+1); c.value=h; styleTableHeader(c); });
     r++;
     companyDefs.forEach(([prefix,label])=>{
       if(!selectedCompanies.has(prefix)) return;
-      const req = num(prefix+'_requested');
+      const orig = num(prefix+'_orig_limit'), req = num(prefix+'_requested');
       const c1 = ws1.getCell(r,1); c1.value=label; styleValue(c1,{bold:true});
-      const c2 = ws1.getCell(r,2); c2.value=req; styleValue(c2,{numFmt:NUMFMT, align:'right', bold:true});
+      const c2 = ws1.getCell(r,2); c2.value=orig; styleValue(c2,{numFmt:NUMFMT, align:'right'});
+      const c3 = ws1.getCell(r,3); c3.value=req; styleValue(c3,{numFmt:NUMFMT, align:'right'});
+      const c4 = ws1.getCell(r,4); c4.value=orig+req; styleValue(c4,{numFmt:NUMFMT, align:'right', bold:true});
       r++;
     });
   }
   r++;
 
-  // ภ.พ.30 & บัญชีธนาคาร - one shared section for the whole application
-  // (not duplicated per company set), matching the standalone card in the
-  // on-screen form right after the last company card. Match the on-screen
-  // "มี ภ.พ.30 หรือไม่" / "มีบัญชีธนาคารหรือไม่" toggles - skip exporting
-  // either half when it's marked "ไม่มี", same as it being hidden on
-  // screen/print.
-  mergeRow('ภ.พ.30 & บัญชีธนาคาร', styleSectionHeader, 20);
-  if(getVal('cc_has_pp30') !== 'no'){
-    wideFieldRow(`ภ.พ.30 (ปี${getVal('cc_pp30_year')})`, getVal('cc_pp30_detail'), {height:24});
-  }
-  if(getVal('cc_has_bank') !== 'no'){
-    // Account 1 always exports; accounts 2/3 only when the user actually
-    // filled one in (mirrors ccBankBlockN.dataset.active on screen).
-    [1,2,3].forEach(function(idx){
-      if(idx>1){
-        var block = document.getElementById('ccBankBlock'+idx);
-        if(!block || block.dataset.active !== '1') return;
-        mergeRow('บัญชีธนาคารที่ ' + idx, styleSubHeader, 16);
-      }
-      var suf = idx===1 ? '' : ('_'+idx);
-      wideFieldRow('บัญชีธนาคาร / ประเภทของเงินฝาก / ชื่อบัญชี / เลขที่บัญชี',
-        [getVal('cc_bank_name'+suf), getVal('cc_bank_acc_type'+suf), getVal('cc_bank_acc_name'+suf), getVal('cc_bank_acc_no'+suf)].filter(Boolean).join(' / '),
-        {height:24});
-      wideFieldRow('รายละเอียดการเดินบัญชี', getVal('cc_bank_flow_detail'+suf), {height:24});
-    });
-  }
-  r++;
-
   mergeRow('ผลการพิจารณาจากฝ่าย Credit Control', styleSectionHeader, 20);
-  wideFieldRow('สินค้าที่ต้องการซื้อเป็นเครดิตการค้า', getVal('cc_product'), {height:24});
-  wideFieldRow('กลุ่มลูกค้าหลัก', getVal('cc_main_customer_group'), {height:24});
+  wideFieldRow('ลักษณะการประกอบธุรกิจ', getVal('cc_business_desc'), {height:24});
+  wideFieldRow('เหตุผล/ความเห็น', getVal('cc_reason'), {height:24});
   fieldRow([
     {label:'ลงนาม (เจ้าหน้าที่วิเคราะห์สินเชื่อ)', value:getVal('sig_analyst')},
     {label:'ลงนาม (ผู้จัดการวิเคราะห์สินเชื่อ)', value:getVal('sig_manager')},
@@ -2521,7 +2640,7 @@ async function exportExcel(){
 
   function finTable(rows, prefix, title){
     mergeRow2(title, styleSectionHeader, 20);
-    ['รายการ','ประมาณการปีปัจจุบัน',YEAR_LABELS[YEARS[0]],YEAR_LABELS[YEARS[1]],YEAR_LABELS[YEARS[2]],`Growth ${yearShort(YEARS[0])} vs ${yearShort(YEARS[1])}`,`Growth ${yearShort(YEARS[1])} vs ${yearShort(YEARS[2])}`].forEach((h,i)=>{ const c=ws2.getCell(r2,i+1); c.value=h; styleTableHeader(c); });
+    ['รายการ','ประมาณการปีปัจจุบัน',YEAR_LABELS.y2568,YEAR_LABELS.y2567,YEAR_LABELS.y2566,...finGrowthHeaderLabels().map(g=>'Growth '+g)].forEach((h,i)=>{ const c=ws2.getCell(r2,i+1); c.value=h; styleTableHeader(c); });
     r2++;
     const resolvedByYear = {y2568:{},y2567:{},y2566:{}};
     rows.forEach(row=>{
@@ -2551,7 +2670,7 @@ async function exportExcel(){
 
   mergeRow2('อัตราส่วนทางการเงิน', styleSectionHeader, 20);
   {
-    ['รายการ','',YEAR_LABELS[YEARS[0]],YEAR_LABELS[YEARS[1]],YEAR_LABELS[YEARS[2]],`Growth ${yearShort(YEARS[0])} vs ${yearShort(YEARS[1])}`,`Growth ${yearShort(YEARS[1])} vs ${yearShort(YEARS[2])}`].forEach((h,i)=>{ const c=ws2.getCell(r2,i+1); c.value=h; styleTableHeader(c); });
+    ['รายการ','',YEAR_LABELS.y2568,YEAR_LABELS.y2567,YEAR_LABELS.y2566,...finGrowthHeaderLabels().map(g=>'Growth '+g)].forEach((h,i)=>{ const c=ws2.getCell(r2,i+1); c.value=h; styleTableHeader(c); });
     r2++;
     const labelMap = {current_ratio:'Current Ratio (เท่า)', roa:'ROA (%)', roe:'ROE (%)', de:'D/E (เท่า)'};
     ['current_ratio','roa','roe','de'].forEach(k=>{
@@ -2570,25 +2689,6 @@ async function exportExcel(){
       r2++;
     });
   }
-
-  // wideFieldRow2 - single wide label/value row spanning ws2's 7 columns,
-  // mirroring wideFieldRow (ws1) for the narrative summary fields added
-  // after the ratio table (สรุปผลการดำเนินงาน / สรุปอัตราส่วนทางการเงิน).
-  function wideFieldRow2(label, value, opts){
-    opts = opts||{};
-    const lc = ws2.getCell(r2,1); lc.value=label; styleLabel(lc);
-    ws2.mergeCells(r2,2,r2,7);
-    const vc = ws2.getCell(r2,2); vc.value=value||''; styleValue(vc);
-    if(opts.height) ws2.getRow(r2).height = opts.height;
-    r2++;
-  }
-  mergeRow2('สรุปผลการดำเนินงาน', styleSectionHeader, 20);
-  wideFieldRow2('ภาพรวมผลการดำเนินงานของกิจการ', getVal('fin_overview_revenue'), {height:24});
-  wideFieldRow2('ผลการดำเนินงานตามงบสรรพากร', getVal('fin_overview_tax'), {height:24});
-  mergeRow2('สรุปอัตราส่วนทางการเงิน', styleSectionHeader, 20);
-  wideFieldRow2('สรุป Current Ratio', getVal('fin_ratio_current_summary'), {height:24});
-  wideFieldRow2('สรุปอัตราส่วน D/E', getVal('fin_ratio_de_summary'), {height:24});
-  wideFieldRow2('สรุปความเห็น / ข้อเสนอการอนุมัติวงเงิน', getVal('fin_summary_detail'), {height:40});
 
   const custName = (getVal('g_cust_th')||'CA_Form').replace(/[\\\/:*?"<>|]/g,'');
   const dateForFile = (getVal('g_date')||'').replace(/\//g,'-');
@@ -3147,20 +3247,14 @@ const BOL_BALANCE_FIELDS = [
   {key:'total_equity', pattern:'รวมส่วนของผู้ถือหุ้น', mode:'exact'},
 ];
 
-// Extracts {label, cols:[...raw strings, one per year column actually
-// present]} rows from a financial table page (Balance Sheet / Income
-// Statement). Columns are detected dynamically from the page's own
-// "DD/MM/YYYY" header row - both the NUMBER of columns (a report only ever
-// shows as many year-columns as the company has history for: could be 1,
-// 2, 3, 4 or the full 5) and their pixel bounds (robust to column-width
-// differences between different companies' reports) come straight from
-// that header, rather than assuming a fixed 5-column layout. colYears (one
-// Buddhist-era year per column, e.g. 2568) lets the caller line each
-// column up with the correct year regardless of how many/which years the
-// report actually included.
+// Extracts {label, cols:[y0..y4 as raw strings]} rows from a financial
+// table page (Balance Sheet / Income Statement), where columns are
+// detected dynamically from the page's own "DD/MM/YYYY" x 5 header row
+// (robust to column-width differences between different companies'
+// reports) rather than hard-coded pixel positions.
 function extractFinPageRows(items){
   const dateItems = items.filter(it => /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(it.str.trim()));
-  if(dateItems.length < 1) return null;
+  if(dateItems.length < 5) return null;
   const byY = [];
   dateItems.forEach(it=>{
     let bucket = byY.find(b => Math.abs(b.y - it.y) < 2);
@@ -3168,25 +3262,30 @@ function extractFinPageRows(items){
     bucket.items.push(it);
   });
   byY.sort((a,b)=> b.items.length - a.items.length);
-  if(byY[0].items.length < 1) return null;
+  if(byY[0].items.length < 5) return null;
   const headerItems = byY[0].items.slice().sort((a,b)=> a.x - b.x).slice(0,5);
   const headerY = byY[0].y;
-  // Buddhist-era year printed in each header column (e.g. "31/12/2568" ->
-  // 2568), left-to-right = most recent to oldest.
-  const colYears = headerItems.map(it=>{
-    const parts = it.str.trim().split('/');
-    return parseInt(parts[parts.length-1], 10);
+
+  // The header row's own dates (e.g. "31/08/2567") are the report's actual
+  // period-end dates for each column, newest first (left-to-right) per the
+  // BOL layout - pull the Buddhist year out of each so the caller can find
+  // out which 3 calendar years this particular PDF actually covers, rather
+  // than assuming it always matches whatever 3 years the form currently
+  // has selected. Only the first 3 (of 5) columns are used elsewhere.
+  const headerYears = headerItems.map(it=>{
+    const m = it.str.trim().match(/\/(\d{4})$/);
+    return m ? parseInt(m[1], 10) : null;
   });
 
   const bounds = [];
-  for(let i=0;i<headerItems.length-1;i++){
+  for(let i=0;i<4;i++){
     bounds.push((headerItems[i].x + headerItems[i].width + headerItems[i+1].x) / 2);
   }
   const labelBound = headerItems[0].x - 10;
   function colOf(x){
     if(x < labelBound) return -1;
-    for(let i=0;i<bounds.length;i++){ if(x < bounds[i]) return i; }
-    return headerItems.length-1;
+    for(let i=0;i<4;i++){ if(x < bounds[i]) return i; }
+    return 4;
   }
 
   const dataItems = items.filter(it => it.y < headerY - 2);
@@ -3206,7 +3305,7 @@ function extractFinPageRows(items){
   const resolved = rows.map(row=>{
     const sorted = row.items.slice().sort((a,b)=> a.x - b.x);
     let labelText = '';
-    const colTexts = new Array(headerItems.length).fill('');
+    const colTexts = ['','','','',''];
     let hasValues = false;
     sorted.forEach(it=>{
       const c = colOf(it.x);
@@ -3254,24 +3353,9 @@ function extractFinPageRows(items){
     entries.push({label: pendingLabel + r.labelText, cols: r.colTexts});
     pendingLabel = '';
   });
-  return {entries, colYears};
+  return {entries, years: headerYears.slice(0,3)};
 }
 
-// colYears: Buddhist-era year (e.g. 2568) for each column in entries[].cols,
-// same order/length, from extractFinPageRows(), left-to-right = most recent
-// to oldest. The form's financial-statement table always tracks exactly 3
-// year SLOTS (YEARS = y2568/y2567/y2566 - these are positional slot ids,
-// "latest / 2nd-latest / 3rd-latest", not literal calendar years) - so
-// column i just maps straight to YEARS[i] regardless of what calendar year
-// that column actually is. A report with 5 years of history still only
-// contributes its latest 3 (columns 3 and 4 are simply never read), and a
-// report with fewer years of history (1 or 2 columns) leaves the remaining
-// slot(s) unset here, which the caller then shows as "-" instead of a
-// stale value. handleBolFile() separately re-labels the 3 slots (see
-// YEAR_LABELS / updateFinTableYearHeaders) to match whichever calendar
-// years this particular document's columns actually are - a company whose
-// latest filed statement is, say, ปี 2567 (not 2568) still gets its real 3
-// years read in and shown with the right year numbers.
 function matchFinFields(entries, fieldDefs){
   const result = {};
   const normEntries = entries.map(e => ({norm: normFinLabel(e.label), cols: e.cols}));
@@ -3295,11 +3379,11 @@ function matchFinFields(entries, fieldDefs){
       if(hit) break;
     }
     if(hit){
-      const vals = {};
-      YEARS.forEach((key, i)=>{
-        if(hit.cols[i] !== undefined) vals[key] = parseFinNum(hit.cols[i]);
-      });
-      result[def.key] = vals;
+      result[def.key] = {
+        y2568: parseFinNum(hit.cols[0]),
+        y2567: parseFinNum(hit.cols[1]),
+        y2566: parseFinNum(hit.cols[2]),
+      };
     }
   });
   return result;
@@ -3316,12 +3400,11 @@ async function extractBolFinancials(file){
   const income = {};
   const balance = {};
   let incomePagesFound = 0, balancePagesFound = 0;
-  // Most recent Buddhist-era year actually printed in this document's own
-  // financial-statement header (colYears[0] of whichever page is read
-  // first) - used afterward to re-label the table's 3 fixed year slots so
-  // they show this document's real years instead of always assuming the
-  // newest slot is the current reporting year.
-  let newestYear = null;
+  // Years actually printed in this PDF's own column headers (newest
+  // first), taken from whichever page's header we can read first - a
+  // legitimate BOL report shows the same 3 years on every financial page,
+  // so the first successful read is enough.
+  let detectedYears = null;
 
   for(let p=1; p<=pdf.numPages; p++){
     const page = await pdf.getPage(p);
@@ -3349,13 +3432,12 @@ async function extractBolFinancials(file){
     const isIncome = /Income\s*Statement/i.test(topText);
     if(!isBalance && !isIncome) continue;
 
-    const parsed = extractFinPageRows(items);
-    if(!parsed) continue;
-    const {entries, colYears} = parsed;
-    // Keep the newest year seen across every fin page read (income and
-    // balance pages of the same report should always agree, but take the
-    // max just in case one page's header parses slightly differently).
-    if(colYears.length && (newestYear === null || colYears[0] > newestYear)) newestYear = colYears[0];
+    const pageResult = extractFinPageRows(items);
+    if(!pageResult) continue;
+    const { entries, years: pageYears } = pageResult;
+    if(!detectedYears && pageYears.length === 3 && pageYears.every(y=>Number.isInteger(y))){
+      detectedYears = pageYears;
+    }
 
     if(isBalance){
       balancePagesFound++;
@@ -3370,37 +3452,39 @@ async function extractBolFinancials(file){
     }
   }
 
-  return {income, balance, incomePagesFound, balancePagesFound, newestYear};
+  return {income, balance, incomePagesFound, balancePagesFound, years: detectedYears};
 }
 
 // Field ids actually written by the most recent BOL import, so
-// "ล้างข้อมูลที่นำเข้า" can undo exactly that import - and nothing the user
-// typed in by hand - without needing a full "ล้างฟอร์ม". Reset at the start
-// of every new import, then cleared again once consumed.
+// "ล้างข้อมูล" (clearBolImportedFields) can undo exactly that import - and
+// nothing the user typed in by hand - without needing a full "ล้างฟอร์ม".
+// Reset at the start of every new import, then cleared again once consumed.
 let lastBolFilledIds = [];
-// Snapshot of YEAR_LABELS from just before the most recent BOL import, so
-// clearBolImportedFields() can put the table's year headers back the way
-// they were too, not just the data cells - captured on every import
-// attempt (even one that ends up not touching YEAR_LABELS) so "clear" is
-// always a clean, complete undo of "import".
-let lastBolYearLabelsSnapshot = null;
+// Snapshot of CURRENT_FIN_YEARS from just before the most recent BOL
+// import, so clearBolImportedFields() can put the table's year headers
+// back the way they were too, not just the data cells - captured on every
+// import attempt (even one that ends up not touching the years) so "clear"
+// is always a clean, complete undo of "import".
+let lastBolYearsSnapshot = null;
 async function handleBolFile(file){
   if(!file) return;
   setBolStatus('กำลังอ่านไฟล์ PDF (หน้าแรก)...', 'busy');
   lastBolFilledIds = [];
-  lastBolYearLabelsSnapshot = {...YEAR_LABELS};
+  lastBolYearsSnapshot = CURRENT_FIN_YEARS.slice();
   try{
     const data = await extractBolPage1(file);
     const filled = [];
     const setTracked = (id, v) => { setVal(id, v); lastBolFilledIds.push(id); };
-    // "วันที่" is always today's actual date (see recalcAll/updateTodayDate),
-    // never the date printed on the imported BOL report, so it is
-    // intentionally not set from data.printedDate here.
-    if(data.custTh){ setTracked('g_cust_th', data.custTh); filled.push('ชื่อลูกค้า'); }
+    // "วันที่" on the form always means the date this credit request is
+    // being made in the system - NOT the BOL document's own print/download
+    // date, so it is deliberately left untouched here (it already defaults
+    // to today via loadExampleData()/clearForm(), same as this button
+    // leaves it if the person hasn't changed it).
+    if(data.custTh){ setTracked('g_cust_th', data.custTh); syncBankAccountNameFromCustName(); filled.push('ชื่อลูกค้า'); }
     if(data.custEn){ setTracked('g_cust_en', data.custEn); filled.push('Customer Name'); }
     if(data.regNo){ setTracked('g_reg_no', data.regNo); filled.push('เลขทะเบียนนิติบุคคล'); }
     if(data.regDate){ setTracked('g_reg_date', isoToThaiDate(data.regDate)); filled.push('วันที่จดทะเบียน'); }
-    if(data.bizType){ setTracked('g_biz_type', data.bizType); filled.push('ประเภทธุรกิจ'); }
+    if(data.bizType){ setTracked('g_biz_type', data.bizType); syncBizDescDetailFromBizType(); filled.push('ประเภทธุรกิจ'); }
     if(data.regCapital){ setTracked('bs_paid_capital_y2568', data.regCapital); }
     if(data.regCapitalText){ setTracked('g_reg_capital_latest', data.regCapitalText); filled.push('ทุนจดทะเบียนล่าสุด'); }
     if(data.yearsOperating){ setTracked('g_years_operating', data.yearsOperating); filled.push('จำนวนปีที่ดำเนินกิจการ'); }
@@ -3417,6 +3501,20 @@ async function handleBolFile(file){
     try{
       const fin = await extractBolFinancials(file);
       let finCount = 0;
+      // If this PDF's own column headers cover different years than the
+      // form's 3 columns currently show, switch the table headers to match
+      // BEFORE filling in values below - e.g. an older BOL report whose
+      // latest year is 2567 (not the form's default 2568) should end up
+      // labeled "ปี 2567 / ปี 2566 / ปี 2565", not silently mislabeled.
+      // Slot keys (y2568/y2567/y2566) and every input's id stay the same -
+      // only the displayed year text changes.
+      if(fin.years && fin.years.length === 3){
+        const isDifferent = fin.years.some((y,i)=> y !== CURRENT_FIN_YEARS[i]);
+        if(isDifferent){
+          setFinYears(fin.years);
+          filled.push(`ปีงบการเงิน (${fin.years.join('/')})`);
+        }
+      }
       // Walk every extractable row (not just the ones matchFinFields found)
       // so a line item the PDF genuinely doesn't have - or a single blank
       // year within an otherwise-matched row - shows "-" instead of being
@@ -3449,14 +3547,6 @@ async function handleBolFile(file){
           });
         });
       }
-      // Re-label the table's 3 year slots to match THIS document's actual
-      // years (e.g. a company whose latest filed statement is ปี 2567, not
-      // 2568, still gets its real years shown) - see matchFinFields()'s
-      // comment for why the slots themselves stay positional.
-      if(fin.newestYear){
-        YEARS.forEach((key, i)=>{ YEAR_LABELS[key] = 'ปี ' + (fin.newestYear - i); });
-        updateFinTableYearHeaders();
-      }
       if(finCount > 0){
         filled.push(`งบการเงิน 3 ปีล่าสุด (${finCount} รายการ)`);
       } else if(fin.incomePagesFound || fin.balancePagesFound){
@@ -3483,9 +3573,15 @@ async function handleBolFile(file){
   }
 }
 
-// Undoes exactly the fields the most recent handleBolFile() call wrote,
-// leaving anything the user typed in themselves (before or after the
-// import, or in fields the import didn't touch) untouched.
+// "ล้างข้อมูล" next to the BOL PDF box - undoes exactly the fields the most
+// recent handleBolFile() call wrote (see lastBolFilledIds above), leaving
+// anything the user typed in themselves - before or after the import, or in
+// fields the import didn't touch - untouched. Also restores the table's
+// year headers to whatever they were just before that import (see
+// lastBolYearsSnapshot), since a BOL import can switch them via
+// setFinYears(). Matches the equivalent function in
+// CA_Credit_Application_Form_ลูกค้าใหม่.html so both forms behave the same
+// way here.
 function clearBolImportedFields(){
   if(!lastBolFilledIds.length){
     setBolStatus('ยังไม่มีข้อมูลที่นำเข้าจากไฟล์ BOL ให้ล้าง', '');
@@ -3494,16 +3590,16 @@ function clearBolImportedFields(){
   if(!confirm('ล้างเฉพาะข้อมูลที่ดึงจากไฟล์ BOL ล่าสุด (ไม่กระทบข้อมูลอื่นที่กรอกเอง) ยืนยันหรือไม่?')) return;
   lastBolFilledIds.forEach(id => setVal(id, ''));
   lastBolFilledIds = [];
-  // Put the year-column headers back the way they were before this import
-  // too (see the matching snapshot taken at the top of handleBolFile).
-  if(lastBolYearLabelsSnapshot){
-    Object.assign(YEAR_LABELS, lastBolYearLabelsSnapshot);
-    lastBolYearLabelsSnapshot = null;
-    updateFinTableYearHeaders();
+  if(lastBolYearsSnapshot){
+    setFinYears(lastBolYearsSnapshot);
+    lastBolYearsSnapshot = null;
   }
+  syncBankAccountNameFromCustName();
+  syncBizDescDetailFromBizType();
   formatAllFinInputs();
   formatAllUsedInputs();
   recalcAll();
+  document.getElementById('bolFile').value = '';
   setBolStatus('ล้างข้อมูลที่นำเข้าจากไฟล์ BOL แล้ว', '');
 }
 
@@ -3619,6 +3715,10 @@ function parseSalesAmountCell(raw){
 // char-level x-gap join + tone-mark cleanup already proven for BOL page 1
 // (see extractBolPage1) - kept as its own copy here rather than shared so
 // the well-tested BOL path can't be affected by changes made for CM.
+// Returns {text, y} objects (not plain strings) - the PDF-space y of each
+// line is kept around so a later OCR fallback (see ocrSalesTableFromPage)
+// can find where on the page a line sat, e.g. to crop out an image that
+// starts just below the "ยอดขาย" label.
 function cmPageToLines(rawItems){
   const items = rawItems
     .map(it => ({str:(it.str||'')
@@ -3654,8 +3754,119 @@ function cmPageToLines(rawItems){
       text += it.str;
       lastEnd = it.x + it.str.length*7;
     });
-    return fixToneMarks(text.replace(/\s+/g,' ').trim());
-  }).filter(l => l !== '');
+    return {y:r.y, text: fixToneMarks(text.replace(/\s+/g,' ').trim())};
+  }).filter(l => l.text !== '');
+}
+
+// Lazily creates a single Tesseract.js worker the first time OCR is
+// actually needed, and reuses it for the rest of the page's lifetime
+// (spinning one up takes a couple of seconds, so it's only worth paying
+// that cost once). English is enough - the pasted-in sales tables only
+// ever contain digits, commas/periods, dashes and Latin letters ("ORG",
+// the company code).
+let cmOcrWorkerPromise = null;
+function getCmOcrWorker(){
+  if(!cmOcrWorkerPromise){
+    if(typeof Tesseract === 'undefined'){
+      return Promise.reject(new Error('ไม่สามารถโหลดไลบรารีอ่านตัวเลขจากรูปภาพ (OCR) ได้ (ต้องเชื่อมต่ออินเทอร์เน็ต)'));
+    }
+    cmOcrWorkerPromise = Tesseract.createWorker('eng');
+  }
+  return cmOcrWorkerPromise;
+}
+
+// Renders `page` and crops out the strip starting just below a text line
+// at PDF-space y-coordinate `labelY` (i.e. right under the "ยอดขาย" label),
+// then OCRs that crop and returns the raw recognized text. Used only when
+// the sales table couldn't be found as real text - it was pasted into the
+// PDF as a picture instead.
+async function ocrSalesTableFromPage(page, labelY){
+  const scale = 3; // render well above the source image's own resolution
+  const viewport = page.getViewport({scale});
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
+
+  // Crop a generous strip below the label - full page width, and tall
+  // enough to comfortably cover any such table - rather than trying to
+  // detect the picture's exact bounds (pdf.js's text-only API doesn't
+  // expose those without parsing the page's raw drawing operations).
+  const pageWidth = page.view[2] - page.view[0];
+  const topPdfY = labelY - 2;
+  const bottomPdfY = Math.max(0, topPdfY - 220);
+  const p1 = viewport.convertToViewportPoint(0, topPdfY);
+  const p2 = viewport.convertToViewportPoint(pageWidth, bottomPdfY);
+  const sx = Math.max(0, Math.min(p1[0], p2[0]));
+  const sy = Math.max(0, Math.min(p1[1], p2[1]));
+  const sw = Math.max(1, Math.min(canvas.width, Math.max(p1[0], p2[0])) - sx);
+  const sh = Math.max(1, Math.min(canvas.height, Math.max(p1[1], p2[1])) - sy);
+
+  const cropCanvas = document.createElement('canvas');
+  cropCanvas.width = sw;
+  cropCanvas.height = sh;
+  cropCanvas.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+  // These report tables commonly use a solid-colour header row (light text
+  // on a dark fill) - the opposite of the dark-text-on-light body text
+  // Tesseract is tuned for. Also OCR a grayscaled/contrast-boosted/inverted
+  // copy of the same crop, which normalizes light-on-dark text back to
+  // dark-on-light, and hand both passes' text to the caller so whichever
+  // one actually reads the header clearly gets used.
+  const invCanvas = document.createElement('canvas');
+  invCanvas.width = sw;
+  invCanvas.height = sh;
+  const ictx = invCanvas.getContext('2d');
+  ictx.filter = 'grayscale(1) contrast(1.4) invert(1)';
+  ictx.drawImage(cropCanvas, 0, 0);
+
+  const worker = await getCmOcrWorker();
+  try{ await worker.setParameters({tessedit_pageseg_mode: '6'}); }catch(e){ /* older/newer API without this - fine, default PSM still works */ }
+  const [normal, inverted] = await Promise.all([
+    worker.recognize(cropCanvas).then(r=>r.data.text).catch(()=>''),
+    worker.recognize(invCanvas).then(r=>r.data.text).catch(()=>''),
+  ]);
+  return normal + '\n' + inverted;
+}
+
+// Looks for the same "ORG <year> <year> ... / <code> <amount> <amount> ..."
+// table shape in raw OCR output. OCR text is noisier than pdf.js's own
+// text layer (a row can land on the "wrong" line, digits can be misread),
+// so this is a little more forgiving than the real-text table parser:
+// the data row is allowed to be one of the next couple of OCR lines rather
+// than strictly the very next one, and a leading company-code token (e.g.
+// "SCE") on that row is dropped before counting numbers.
+//
+// Tried twice: first requiring the literal "ORG" header word (matches the
+// real-text parser's own rule), then - since these report tables usually
+// have a solid-colour header row with light text on a dark fill, which
+// Tesseract (tuned for dark text on light backgrounds) can garble worse
+// than plain black-on-white body text - a looser pass that only needs a
+// line with 2+ year-shaped numbers immediately backed by a matching
+// numeric row, in case "ORG" itself didn't come through legibly.
+function parseOcrSalesTable(ocrText){
+  const olines = (ocrText||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const scan = (requireOrg) => {
+    for(let i=0; i<olines.length; i++){
+      const headerLine = olines[i];
+      if(requireOrg && !/\bORG\b/i.test(headerLine)) continue;
+      const yearMatches = [...headerLine.matchAll(/(?:19|20)\d{2}/g)].map(m=>m[0]);
+      if(yearMatches.length < 2) continue;
+      for(let j=i+1; j<Math.min(i+3, olines.length); j++){
+        let tokens = olines[j].split(/\s+/).filter(Boolean);
+        if(/^[A-Za-z]+$/.test(tokens[0]||'')) tokens = tokens.slice(1); // drop leading org code
+        const numTokens = tokens.filter(t => t==='-' || /^-?[\d.,]+$/.test(t));
+        if(numTokens.length === yearMatches.length){
+          return yearMatches.map((y,idx)=>{
+            const raw = numTokens[idx];
+            return {year:y, amount: raw==='-' ? 0 : parseFloat(raw.replace(/,/g,''))};
+          });
+        }
+      }
+    }
+    return [];
+  };
+  return scan(true).length ? scan(true) : scan(false);
 }
 
 // Which kind of file was attached to the Comment(CM) import box: real
@@ -3745,9 +3956,17 @@ async function extractCmData(file){
     throw new Error('ไม่รองรับไฟล์ .doc (Word รุ่นเก่า) กรุณาเปิดไฟล์แล้ว "บันทึกเป็น" นามสกุล .docx ก่อนแนบใหม่อีกครั้ง');
   }
 
-  let allLines = [];
+  let allLines = [];      // plain line text, same as before
+  let lineMeta = [];      // parallel array: {page, y} for each line in allLines
+  const pdfPageCache = {}; // page number -> pdf.js page proxy, reused below
+                            // if the "ยอดขาย" table turns out to be a picture
+                            // and needs to be re-rendered for OCR. Stays
+                            // empty for a Word file - a .docx table cell is
+                            // already real text, so the OCR fallback below
+                            // simply never triggers in that case.
   if(kind === 'docx'){
-    allLines = await extractLinesFromDocx(file);
+    const docxLines = await extractLinesFromDocx(file);
+    docxLines.forEach(t=>{ allLines.push(t); lineMeta.push({page:-1, y:0}); });
   } else {
     if(typeof pdfjsLib === 'undefined'){
       throw new Error('ไม่สามารถโหลดไลบรารีอ่าน PDF ได้ (ต้องเชื่อมต่ออินเทอร์เน็ต)');
@@ -3757,8 +3976,9 @@ async function extractCmData(file){
     const pdf = await pdfjsLib.getDocument({data:arrayBuffer}).promise;
     for(let p=1; p<=pdf.numPages; p++){
       const page = await pdf.getPage(p);
+      pdfPageCache[p] = page;
       const content = await page.getTextContent();
-      allLines = allLines.concat(cmPageToLines(content.items));
+      cmPageToLines(content.items).forEach(o=>{ allLines.push(o.text); lineMeta.push({page:p, y:o.y}); });
     }
   }
 
@@ -3767,14 +3987,14 @@ async function extractCmData(file){
   // to it. Lines before the first code line (if any) are discarded.
   const blocks = [];
   let current = null;
-  allLines.forEach(line=>{
+  allLines.forEach((line, idx)=>{
     const bare = line.replace(/\s+/g,'');
     const code = Object.keys(CM_PREFIX_BY_CODE).find(c => bare === c);
-    if(code){ current = {prefix: CM_PREFIX_BY_CODE[code], lines: []}; blocks.push(current); return; }
-    if(current) current.lines.push(line);
+    if(code){ current = {prefix: CM_PREFIX_BY_CODE[code], lines: [], meta: []}; blocks.push(current); return; }
+    if(current){ current.lines.push(line); current.meta.push(lineMeta[idx]); }
   });
 
-  blocks.forEach(b=>{
+  for(const b of blocks){
     const lines = b.lines;
     const d = {};
 
@@ -3829,88 +4049,113 @@ async function extractCmData(file){
     const outstandingRaw = cmValueAfterLabel(lines, 'ยอดค้างชำระ');
     if(outstandingRaw) d.latestOutstanding = outstandingRaw;
 
-    // "ยอดขาย" (sales by year) - CM exports render this section in one of
-    // two shapes, and reports vary in how many years they include (some
-    // show 3, some show all 5) - whatever is present is picked up, capped
-    // only at the 5 rows the purchase-history table supports:
-    //   1) a plain-text list, one year per line: "ปี YYYY = amount บาท"
-    //   2) a table: a header row of year numbers (e.g. "ORG 2022 2023 2024
-    //      2025 2026") immediately followed by one data row of amounts in
-    //      the same left-to-right order (e.g. "SCE 1,153,483.49 722,093.38
-    //      633,425.20 1,182,789.96 1,206,190.08")
-    // Some CM exports paste this table in as a screenshot image instead,
-    // which has no extractable text at all - in that case d.sales stays
-    // unset and the purchase-history table is left for the person to fill
-    // in by hand.
+    // "ยอดขาย" (sales by year) - two possible report layouts, and a single
+    // report can mix both across its company sections:
+    //  1) A table: a header row "ORG <year1> <year2> ... <yearN>" followed
+    //     immediately by one data row "<code> <amount1> ... <amountN>" -
+    //     pdf.js flattens each visual table row into a single text line
+    //     regardless of the column gaps (rows are grouped purely by
+    //     Y-position, see cmPageToLines above), so this is just two
+    //     adjacent lines to match up positionally.
+    //  2) Plain text, one line per year: "ปี YYYY = amount บาท".
+    // Some CM exports instead paste this table in as a screenshot image,
+    // which has no extractable text at all - in that case fall back to
+    // OCR-ing the image itself (see ocrSalesTableFromPage below). Whichever
+    // layout is found is capped to HIST_ROW_LIMIT years (newest first),
+    // matching the on-screen table's own row cap.
     const salesIdx = lines.findIndex(l => cmStripMarks(l).includes(cmStripMarks('ยอดขาย')));
     if(salesIdx >= 0){
-      const years = [];
-      for(let i=salesIdx+1; i<lines.length; i++){
-        const l = lines[i];
-        if(cmStripMarks(l).includes(cmStripMarks('ยอดค้างชำระ'))) break;
-        const ym = /(\d{4})\s*=\s*(-|[\d,]+(?:\.\d+)?)\s*(?:บาท)?/.exec(l);
-        if(ym){ years.push({year: ym[1], amount: ym[2]==='-' ? 0 : parseFloat(ym[2].replace(/,/g,''))}); }
-        else if(years.length) break;
-      }
-      if(!years.length){
-        for(let i=salesIdx+1; i<lines.length-1; i++){
-          const headerL = lines[i];
-          const yearToks = headerL.match(/\b(?:19|20)\d{2}\b/g);
-          if(!yearToks || yearToks.length < 2) continue;
-          const dataL = lines[i+1];
+      let years = [];
 
-          if(dataL.indexOf('\t') >= 0){
-            // Word (.docx) table row - cell boundaries are unambiguous here
-            // (extractLinesFromDocx tab-joins <w:tc> cells), unlike a
-            // PDF-flattened line where columns are just whitespace gaps.
-            // This matters because a real report can render a zero-value
-            // cell as "-     0.00" (a dash *and* a number, inside ONE
-            // cell) - naively re-splitting on whitespace would wrongly
-            // treat that as two separate cells and misalign every year
-            // after it, so each tab-delimited cell is parsed on its own.
-            const cells = dataL.split('\t').map(t=>t.trim());
-            const amountCells = cells.slice(1); // cells[0] is the company code
-            if(amountCells.length === yearToks.length){
-              const parsed = amountCells.map(parseSalesAmountCell);
-              if(parsed.every(v => v !== null)){
-                yearToks.forEach((y,idx)=>{ years.push({year:y, amount: parsed[idx]}); });
-              }
-            }
-          } else {
-            const amtToks = (dataL.match(/-|[\d,]+(?:\.\d+)?/g) || []).slice(0, yearToks.length);
-            if(amtToks.length === yearToks.length){
-              yearToks.forEach((y,idx)=>{
-                const raw = amtToks[idx];
-                years.push({year:y, amount: raw==='-' ? 0 : parseFloat(raw.replace(/,/g,''))});
-              });
+      // --- Layout 1: table (real text) ---
+      for(let i=salesIdx; i<Math.min(salesIdx+6, lines.length-1); i++){
+        const headerLine = lines[i];
+        if(!/\bORG\b/i.test(headerLine)) continue;
+        const yearMatches = [...headerLine.matchAll(/(?:19|20)\d{2}/g)].map(m=>m[0]);
+        if(yearMatches.length < 2) continue;
+        const dataLine = lines[i+1];
+        if(!dataLine) continue;
+
+        if(dataLine.indexOf('\t') >= 0){
+          // Word (.docx) table row - cell boundaries are unambiguous here
+          // (extractLinesFromDocx tab-joins <w:tc> cells), unlike a
+          // PDF-flattened line where columns are just whitespace gaps.
+          // This matters because a real report can render a zero-value
+          // cell as "-     0.00" (a dash *and* a number, inside ONE
+          // cell) - naively re-splitting on whitespace would wrongly
+          // treat that as two separate cells and misalign every year
+          // after it, so each tab-delimited cell is parsed on its own.
+          const cells = dataLine.split('\t').map(t=>t.trim());
+          const amountCells = cells.slice(1); // cells[0] is the company code
+          if(amountCells.length === yearMatches.length){
+            const parsed = amountCells.map(parseSalesAmountCell);
+            if(parsed.every(v => v !== null)){
+              years = yearMatches.map((y,idx)=>({year:y, amount: parsed[idx]}));
+              break;
             }
           }
-          break;
+        } else {
+          const tokens = dataLine.split(/\s+/).filter(Boolean);
+          const numTokens = tokens.filter(t => t==='-' || /^-?[\d,]+(?:\.\d+)?$/.test(t));
+          if(numTokens.length === yearMatches.length){
+            years = yearMatches.map((y,idx)=>{
+              const raw = numTokens[idx];
+              return {year:y, amount: raw==='-' ? 0 : parseFloat(raw.replace(/,/g,''))};
+            });
+            break;
+          }
         }
       }
+
+      // --- Layout 2: plain text lines (only tried if no table matched) ---
+      if(!years.length){
+        for(let i=salesIdx+1; i<lines.length; i++){
+          const l = lines[i];
+          if(cmStripMarks(l).includes(cmStripMarks('ยอดค้างชำระ'))) break;
+          const ym = /(\d{4})\s*=\s*(-|[\d,]+(?:\.\d+)?)\s*(?:บาท)?/.exec(l);
+          if(ym){ years.push({year: ym[1], amount: ym[2]==='-' ? 0 : parseFloat(ym[2].replace(/,/g,''))}); }
+          else if(years.length) break;
+        }
+      }
+
+      // --- Layout 3: OCR fallback - the table is a pasted-in picture, so
+      // there's no text to match at all above. Crop the page just below
+      // the "ยอดขาย" label and read the numbers out of the image itself.
+      let salesFromOcr = false, salesOcrAttempted = false;
+      if(!years.length){
+        const meta = b.meta[salesIdx];
+        if(meta && pdfPageCache[meta.page]){
+          salesOcrAttempted = true;
+          try{
+            const ocrText = await ocrSalesTableFromPage(pdfPageCache[meta.page], meta.y);
+            years = parseOcrSalesTable(ocrText);
+            if(years.length) salesFromOcr = true;
+          }catch(e){
+            // OCR itself failing (e.g. offline, library didn't load) is not
+            // fatal - just leave d.sales unset like the "couldn't find a
+            // table at all" case below.
+          }
+        }
+      }
+
       if(years.length){
         years.sort((a,b)=> parseInt(b.year,10) - parseInt(a.year,10));
-        d.sales = years.slice(0,5);
+        d.sales = years.slice(0, HIST_ROW_LIMIT);
+        d.salesFromOcr = salesFromOcr;
+      } else if(salesOcrAttempted){
+        d.salesOcrFailed = true;
       }
     }
 
     b.data = d;
-  });
+  }
 
   return blocks;
 }
 
-// Same "undo just this import" bookkeeping as lastBolFilledIds above, plus
-// the list of company prefixes whose purchase-history mini table (a
-// dynamically-built list of rows, not a plain input) the import replaced,
-// so clearCmImportedFields() can empty those tables too.
-let lastCmFilledIds = [];
-let lastCmFilledHistPrefixes = [];
 async function handleCmFile(file){
   if(!file) return;
   setCmStatus('กำลังอ่านไฟล์...', 'busy');
-  lastCmFilledIds = [];
-  lastCmFilledHistPrefixes = [];
   try{
     const blocks = await extractCmData(file);
     if(!blocks.length){
@@ -3932,9 +4177,8 @@ async function handleCmFile(file){
     blocks.forEach(b=>{
       const prefix = b.prefix, d = b.data;
       const fields = [];
-      if(d.code){ setVal(prefix+'_code', d.code); lastCmFilledIds.push(prefix+'_code'); fields.push('รหัสลูกค้า'); }
-      // "วงเงินสินเชื่อเดิม" (d.origLimit) is intentionally not applied to any
-      // field - this form is for new customers, who have no existing limit.
+      if(d.code){ setVal(prefix+'_code', d.code); fields.push('รหัสลูกค้า'); }
+      if(d.origLimit!==undefined){ setVal(prefix+'_orig_limit', d.origLimit); fields.push('วงเงินสินเชื่อเดิม'); }
       if(d.creditDays){
         // "ระยะเวลาเครดิต" (credit_term) is the primary field for this value -
         // fill it the same way a person typing it in would, then reuse the
@@ -3942,22 +4186,25 @@ async function handleCmFile(file){
         // so "ระยะเวลาเครดิต (วัน)" mirrors it automatically, same as manual entry.
         setVal(prefix+'_credit_term', d.creditDays + ' วัน');
         syncCreditDaysFromTerm(prefix);
-        lastCmFilledIds.push(prefix+'_credit_term', prefix+'_credit_days');
         fields.push('ระยะเวลาเครดิต');
       }
-      // "จำนวนที่ใช้ไป" (d.used) is intentionally not applied to any field -
-      // this form is for new customers, who have no prior usage to report.
-      // "ตั้งประวัติเครดิต / ระเบียบวางบิล / ระเบียบชำระเงิน / ชำระหนี้อยู่ใน
-      // ช่วง / เช็คในมือ / ประวัติเช็คคืน / ยอดค้างชำระล่าสุด" (d.creditEstablished,
-      // d.billingTerms, d.paymentTerms, d.paymentRange, d.checksOnHand,
-      // d.returnedCheck, d.latestOutstanding) are intentionally not applied
-      // to any field - those fields were dropped from this new-customer form.
+      if(d.used!==undefined){ setVal(prefix+'_used', d.used); fields.push('จำนวนที่ใช้ไป'); }
+      if(d.creditEstablished){ setVal(prefix+'_credit_established', d.creditEstablished); fields.push('ตั้งประวัติเครดิต'); }
+      if(d.billingTerms){ setVal(prefix+'_billing_terms', d.billingTerms); fields.push('ระเบียบวางบิล'); }
+      if(d.paymentTerms){ setVal(prefix+'_payment_terms', d.paymentTerms); fields.push('ระเบียบชำระเงิน'); }
+      if(d.paymentRange){ setVal(prefix+'_payment_range', d.paymentRange); fields.push('ชำระหนี้อยู่ในช่วง'); }
+      if(d.checksOnHand!==undefined){ setVal(prefix+'_checks_on_hand', d.checksOnHand); fields.push('เช็คในมือ'); }
+      if(d.returnedCheck!==undefined){ setVal(prefix+'_returned_check', d.returnedCheck); fields.push('ประวัติเช็คคืน'); }
+      if(d.latestOutstanding){ setVal(prefix+'_latest_outstanding', d.latestOutstanding); fields.push('ยอดค้างชำระล่าสุด'); }
       if(d.sales && d.sales.length){
         loadHist(prefix, d.sales.map(s=>({year:s.year, amount:s.amount})));
-        lastCmFilledHistPrefixes.push(prefix);
-        fields.push('ยอดขาย (ประวัติการซื้อขาย)');
+        fields.push(d.salesFromOcr
+          ? 'ยอดขาย (อ่านจากรูปภาพด้วย OCR - กรุณาตรวจสอบตัวเลขอีกครั้ง)'
+          : 'ยอดขาย (ประวัติการซื้อขาย)');
       } else {
-        warnings.push(`${prefix.toUpperCase()}: ไม่พบตารางยอดขายแบบข้อความ (อาจเป็นรูปภาพ) กรุณากรอกด้วยตนเอง`);
+        warnings.push(d.salesOcrFailed
+          ? `${prefix.toUpperCase()}: ตารางยอดขายเป็นรูปภาพ ลองอ่านด้วย OCR แล้วแต่ไม่สำเร็จ กรุณากรอกด้วยตนเอง`
+          : `${prefix.toUpperCase()}: ไม่พบตารางยอดขาย กรุณากรอกด้วยตนเอง`);
       }
       if(fields.length) filledCompanies.push(`${prefix.toUpperCase()} (${fields.join(', ')})`);
     });
@@ -3973,30 +4220,35 @@ async function handleCmFile(file){
     setCmStatus(msg, filledCompanies.length ? 'ok' : 'err');
   } catch(err){
     console.error(err);
-    lastCmFilledIds = [];
-    lastCmFilledHistPrefixes = [];
     setCmStatus('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + err.message, 'err');
   }
 }
 
-// Undoes exactly the fields/history rows the most recent handleCmFile() call
-// wrote. Leaves "จำนวนชุดข้อมูลวงเงินสินเชื่อ" / company selection alone,
-// since those are structural choices the user may have set independently of
-// the import.
-function clearCmImportedFields(){
-  if(!lastCmFilledIds.length && !lastCmFilledHistPrefixes.length){
-    setCmStatus('ยังไม่มีข้อมูลที่นำเข้าจากไฟล์ Comment ให้ล้าง', '');
-    return;
-  }
-  if(!confirm('ล้างเฉพาะข้อมูลที่ดึงจากไฟล์ Comment ล่าสุด (ไม่กระทบข้อมูลอื่นที่กรอกเอง) ยืนยันหรือไม่?')) return;
-  lastCmFilledIds.forEach(id => setVal(id, ''));
-  lastCmFilledHistPrefixes.forEach(prefix => loadHist(prefix, []));
-  lastCmFilledIds = [];
-  lastCmFilledHistPrefixes = [];
+// "ล้างข้อมูล" next to the Comment PDF box - clears only the per-company
+// credit fields handleCmFile() above fills in, for every company slot
+// (not just whichever ones the last import happened to contain), plus
+// resets each one's ยอดขาย history table back to a single blank row.
+// Company selection (g_credit_count / g_company_N - i.e. which cards are
+// shown) is left alone since that's a scope choice, not imported data;
+// clearing it here could hide a card the person added by hand.
+const CM_CLEAR_PREFIXES = ['sce','scr','scescr','sco','scorp'];
+const CM_CLEAR_FIELD_SUFFIXES = ['code','orig_limit','credit_term','credit_days','used',
+  'credit_established','billing_terms','payment_terms','payment_range',
+  'checks_on_hand','returned_check','latest_outstanding'];
+function clearCmData(){
+  CM_CLEAR_PREFIXES.forEach(prefix=>{
+    CM_CLEAR_FIELD_SUFFIXES.forEach(suffix=>{
+      const el = document.getElementById(prefix+'_'+suffix);
+      if(el) el.value = '';
+    });
+    const tbody = document.querySelector(`#${prefix}_hist_table tbody`);
+    if(tbody){ tbody.innerHTML=''; addHistRow(prefix); }
+  });
   formatAllFinInputs();
   formatAllUsedInputs();
   recalcAll();
-  setCmStatus('ล้างข้อมูลที่นำเข้าจากไฟล์ Comment แล้ว', '');
+  document.getElementById('cmFile').value = '';
+  setCmStatus('', '');
 }
 
 /* ============================================================
@@ -4006,6 +4258,7 @@ function init(){
   buildFinTable('tbl_income', incomeRows, 'งบกำไรขาดทุน','is');
   buildFinTable('tbl_balance', balanceRows, 'งบดุล','bs');
   buildRatioTable();
+  attachThaiDateMask('g_date');
   attachThaiDateMask('g_reg_date');
 
   document.getElementById('btnLoadExample').addEventListener('click', loadExampleData);
@@ -4028,52 +4281,55 @@ function init(){
     handleCmFile(file);
     e.target.value = '';
   });
+  // "ล้างข้อมูล" next to each PDF import box - clears only the fields
+  // that particular import fills in (see clearBolImportedFields/clearCmData
+  // above; clearBolImportedFields() has its own confirm() built in, scoped
+  // to exactly the most recent BOL import), plus resets that box's own file
+  // picker and status message, so the person can undo one import and retry
+  // without wiping data from the other import or the rest of the form.
   document.getElementById('btnClearBol').addEventListener('click', clearBolImportedFields);
-  document.getElementById('btnClearCm').addEventListener('click', clearCmImportedFields);
-  // "ภ.พ.30" and "บัญชีธนาคาร..." template pickers - picking an option fills
-  // the textarea below with that starting text (still freely editable),
-  // then the dropdown itself resets to the placeholder so it's just a
-  // one-shot helper, not a persisted choice.
-  document.getElementById('cc_pp30_template').addEventListener('change', (e)=>{
+  document.getElementById('btnClearCm').addEventListener('click', ()=>{
+    if(!confirm('ล้างข้อมูลที่ดึงจาก Comment PDF (วงเงินสินเชื่อ/ประวัติทุกบริษัท) ทั้งหมด?')) return;
+    clearCmData();
+  });
+  // "เหตุผล / ความเห็นประกอบการนำเสนอ" template picker - picking an option
+  // fills the textarea below with that starting text (still freely
+  // editable, e.g. to fill in the actual numbers/year), then the dropdown
+  // itself resets to the placeholder so it's just a one-shot helper, not a
+  // persisted choice.
+  document.getElementById('cc_reason_template').addEventListener('change', (e)=>{
     const v = e.target.value;
-    if(v) setVal('cc_pp30_detail', v);
+    if(v) setVal('cc_reason', v);
     e.target.selectedIndex = 0;
   });
-  document.getElementById('cc_bank_flow_template').addEventListener('change', (e)=>{
+  // "ภ.พ.30" / "สรุปเงินฝาก-ถอน" template pickers - same one-shot helper
+  // pattern as cc_reason_template above. One shared pair for the whole
+  // application (not per company card - see the standalone card after
+  // cardSCORP).
+  document.getElementById('pp30_template').addEventListener('change', (e)=>{
     const v = e.target.value;
-    if(v) setVal('cc_bank_flow_detail', v);
+    if(v) setVal('pp30_summary', v);
+    e.target.selectedIndex = 0;
+  });
+  document.getElementById('bank_summary_template').addEventListener('change', (e)=>{
+    const v = e.target.value;
+    if(v) setVal('bank_summary', v);
     e.target.selectedIndex = 0;
   });
   // Same one-shot template pickers for bank accounts 2 and 3.
   [2,3].forEach((n)=>{
-    const sel = document.getElementById('cc_bank_flow_template_'+n);
+    const sel = document.getElementById('bank_summary_template_'+n);
     if(!sel) return;
     sel.addEventListener('change', (e)=>{
       const v = e.target.value;
-      if(v) setVal('cc_bank_flow_detail_'+n, v);
+      if(v) setVal('bank_summary_'+n, v);
       e.target.selectedIndex = 0;
     });
   });
-  document.getElementById('fin_summary_template').addEventListener('change', (e)=>{
-    const v = e.target.value;
-    if(v) setVal('fin_summary_detail', v);
-    e.target.selectedIndex = 0;
-  });
-  // "สรุปผลการดำเนินงาน" / "สรุปอัตราส่วนทางการเงิน" template pickers - same
-  // one-shot helper pattern as the other tmpl-picker dropdowns above.
-  [
-    ['fin_overview_revenue_template', 'fin_overview_revenue'],
-    ['fin_overview_tax_template', 'fin_overview_tax'],
-    ['fin_ratio_current_summary_template', 'fin_ratio_current_summary'],
-    ['fin_ratio_de_summary_template', 'fin_ratio_de_summary'],
-  ].forEach(([selId, targetId])=>{
-    const el = document.getElementById(selId);
-    if(el) el.addEventListener('change', (e)=>{
-      const v = e.target.value;
-      if(v) setVal(targetId, v);
-      e.target.selectedIndex = 0;
-    });
-  });
+  // "มี ภ.พ.30 หรือไม่" / "มีบัญชีธนาคารหรือไม่" - show/hide the matching
+  // half of the card above.
+  document.getElementById('has_pp30').addEventListener('change', updatePP30BankVisibility);
+  document.getElementById('has_bank').addEventListener('change', updatePP30BankVisibility);
   document.getElementById('btnLoadDraft').addEventListener('click', ()=> document.getElementById('fileDraft').click());
   document.getElementById('fileDraft').addEventListener('change', (e)=>{
     const file = e.target.files[0];
@@ -5666,10 +5922,10 @@ document.addEventListener('DOMContentLoaded', init);
   // lives on its own page, but here it's embedded as a modal inside the
   // CA form's ภ.พ.30 card - this turns the computed annual ledger into
   // the same one-line prose format that card's "ภ.พ.30" textarea already
-  // uses (see the cc_pp30_template example option in the host form), fills
+  // uses (see the pp30_template example option in the host form), fills
   // it in via the host's own setVal(), and closes the modal. It relies on
   // setVal/updatePP30BankVisibility being defined globally by the host
-  // page (they are, in CA_Credit_Application_Form_ลูกค้าใหม่.html) - if this
+  // page (they are, in CA_Credit_Application_Form_116.html) - if this
   // file is ever opened standalone again those just won't exist and the
   // button below no-ops with an alert instead of throwing.
   // ---------------------------------------------------------------
@@ -5711,12 +5967,12 @@ document.addEventListener('DOMContentLoaded', init);
     var sentence = "(" + monthRange + ") มียอดขายรวม " + toMB(totalSales) + " ลบ. เฉลี่ยเดือนละ " + toMB(avgSales) +
       " ลบ. มียอดซื้อรวม " + toMB(totalPurchase) + " ลบ. เฉลี่ยเดือนละ " + toMB(avgPurchase) + " ลบ.";
 
-    setVal("cc_pp30_detail", sentence);
-    setVal("cc_has_pp30", "yes");
+    setVal("pp30_summary", sentence);
+    setVal("has_pp30", "yes");
     // 2-digit Buddhist year to match the "(ปี 69)" field next to the label
     // (2569 -> "69") - same slice(-2) convention used elsewhere in this file
     // (e.g. the month/year column in drawLedgerTable's PDF export).
-    setVal("cc_pp30_year", String(chosenYear).slice(-2));
+    setVal("pp30_year", String(chosenYear).slice(-2));
     if (typeof updatePP30BankVisibility === "function") updatePP30BankVisibility();
 
     // Close via the same .open class the open/close wiring script below
@@ -5795,13 +6051,14 @@ document.addEventListener('DOMContentLoaded', init);
   var DEPOSIT_TYPE_MAP = {'O/D':'กระแสรายวัน (O/D)', 'ออมทรัพย์':'ออมทรัพย์', 'กระแสรายวัน':'กระแสรายวัน', 'ฝากประจำ':'ฝากประจำ'};
 
   // Match the short bank name printed in the statement (e.g. "กสิกรไทย")
-  // against the names already offered in #bankNameList, so the field ends
-  // up consistent with this form's own suggestion list - falls back to a
-  // plain "ธนาคาร<name>" guess if no existing entry matches.
+  // against the full legal names already offered in #thaiBankList, so the
+  // field ends up with the same "ธนาคารกสิกรไทย จำกัด (มหาชน)" style the
+  // rest of the form uses - falls back to a plain "ธนาคาร<name>" guess if
+  // no existing entry matches.
   function findBankFullName(shortName){
     var s = norm(shortName);
     if(!s) return '';
-    var dl = document.getElementById('bankNameList');
+    var dl = document.getElementById('thaiBankList');
     if(dl){
       var opts = dl.querySelectorAll('option');
       for(var i=0;i<opts.length;i++){
@@ -5870,16 +6127,16 @@ document.addEventListener('DOMContentLoaded', init);
   function idFor(base, idx){ return idx===1 ? base : (base+'_'+idx); }
 
   function activateBlock(idx){
-    if(idx===1) return; // account 1 is always shown whenever cc_has_bank=yes
-    var block = document.getElementById('ccBankBlock'+idx);
+    if(idx===1) return; // account 1 is always shown whenever has_bank=yes
+    var block = document.getElementById('bankBlock'+idx);
     if(block){ block.dataset.active = '1'; block.style.display = ''; }
   }
 
   function fillBankBlock(idx, ex){
-    if(ex.bankName) setVal(idFor('cc_bank_name',idx), findBankFullName(ex.bankName));
-    if(ex.accountType) setVal(idFor('cc_bank_acc_type',idx), DEPOSIT_TYPE_MAP[ex.accountType] || ex.accountType);
-    if(ex.accountName) setVal(idFor('cc_bank_acc_name',idx), ex.accountName);
-    if(ex.accountNo) setVal(idFor('cc_bank_acc_no',idx), ex.accountNo);
+    if(ex.bankName) setVal(idFor('bank_name',idx), findBankFullName(ex.bankName));
+    if(ex.accountType) setVal(idFor('bank_account_type',idx), DEPOSIT_TYPE_MAP[ex.accountType] || ex.accountType);
+    if(ex.accountName) setVal(idFor('bank_account_name',idx), ex.accountName);
+    if(ex.accountNo) setVal(idFor('bank_account_no',idx), ex.accountNo);
 
     var depTxt = toMB(ex.avgDeposit), wdTxt = toMB(ex.avgWithdraw), balAvgTxt = toMB(ex.avgEndBalance), curTxt = toMB(ex.currentBalance);
     var parts = [];
@@ -5889,7 +6146,7 @@ document.addEventListener('DOMContentLoaded', init);
     if(ex.asOfDate || curTxt!==null){
       parts.push('ณ. ' + (ex.asOfDate||'-') + ' มียอดเงินคงเหลือ ' + (curTxt!==null?curTxt:'-') + ' ลบ.');
     }
-    setVal(idFor('cc_bank_flow_detail',idx), parts.join(' '));
+    setVal(idFor('bank_summary',idx), parts.join(' '));
     activateBlock(idx);
   }
 
@@ -5938,7 +6195,7 @@ document.addEventListener('DOMContentLoaded', init);
         okCount++;
       });
       if(okCount>0){
-        setVal('cc_has_bank', 'yes');
+        setVal('has_bank', 'yes');
         if(typeof updatePP30BankVisibility === 'function') updatePP30BankVisibility();
       }
       var msg = okCount>0 ? ('นำข้อมูลบัญชีธนาคารจากไฟล์ Excel ไปกรอกในฟอร์มแล้ว (' + okCount + ' บัญชี) กรุณาตรวจสอบความถูกต้องอีกครั้ง') : '';
@@ -5951,11 +6208,11 @@ document.addEventListener('DOMContentLoaded', init);
 
   // "✕ ลบบัญชีนี้" on accounts 2/3 - clears that block's own fields and
   // hides it again (account 1 has no remove button; it's always shown
-  // whenever cc_has_bank=yes).
+  // whenever has_bank=yes).
   document.querySelectorAll('.bank-account-extra .small-btn.remove').forEach(function(btn){
     btn.addEventListener('click', function(){
       var n = btn.getAttribute('data-target');
-      var block = document.getElementById('ccBankBlock'+n);
+      var block = document.getElementById('bankBlock'+n);
       if(!block) return;
       block.querySelectorAll('input[type=text], textarea').forEach(function(el){ el.value = ''; });
       block.dataset.active = '0';
