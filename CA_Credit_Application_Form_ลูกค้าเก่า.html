@@ -696,6 +696,7 @@
       <div class="field"><label class="req">วงเงินเครดิต - Corpus (บาท)</label><input class="req-input" type="text" id="g_corpus_range" placeholder="เช่น 430,000 - 850,000"></div>
       <div class="field"><label class="req">ระดับความเสี่ยง - Corpus</label>
         <select class="req-input" id="g_risk_level">
+          <option>-</option>
           <option>ระดับ 1 ความเสี่ยงต่ำ</option>
           <option>ระดับ 2 ค่อนไปทางความเสี่ยงต่ำ</option>
           <option>ระดับ 3 ต่ำกว่าความเสี่ยงเฉลี่ย</option>
@@ -3589,7 +3590,12 @@ function clearBolImportedFields(){
     return;
   }
   if(!confirm('ล้างเฉพาะข้อมูลที่ดึงจากไฟล์ BOL ล่าสุด (ไม่กระทบข้อมูลอื่นที่กรอกเอง) ยืนยันหรือไม่?')) return;
-  lastBolFilledIds.forEach(id => setVal(id, ''));
+  lastBolFilledIds.forEach(id => {
+    const el = document.getElementById(id);
+    // A <select> (currently only g_risk_level) has no "" option, so clear
+    // it back to the explicit "-" placeholder instead of an unset value.
+    setVal(id, (el && el.tagName === 'SELECT') ? '-' : '');
+  });
   lastBolFilledIds = [];
   if(lastBolYearsSnapshot){
     setFinYears(lastBolYearsSnapshot);
