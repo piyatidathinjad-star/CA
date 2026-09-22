@@ -97,6 +97,16 @@
     font-size:17pt;color:#fff;background:var(--brand);
     margin:-18px -22px 16px -22px;padding:10px 22px;border-radius:10px 10px 0 0;
   }
+  /* A second (or later) h2 inside the same card - e.g. the "ข้อมูลวงเงินสินเชื่อ
+     (Comment ลูกค้าที่มีอยู่เดิม)" banner that now follows "ขอวงเงินสินเชื่อ" in
+     each company card - isn't at the card's own top edge, so it must NOT reuse
+     the first h2's negative bleed margin (that pulled it up over the previous
+     field grid) or its rounded top corners (there's no card edge there to
+     round). It keeps the same full-bleed width and colored-banner look, just
+     sitting normally in the flow with room above it instead of overlapping. */
+  .card h2 ~ h2{
+    margin:24px -22px 16px -22px;border-radius:0;
+  }
   .card h3{font-size:16pt;color:var(--brand-dark);margin:18px 0 8px;border-bottom:1px solid var(--border);padding-bottom:4px;}
 
   .bol-box{background:var(--brand-light);border:1px dashed var(--brand);border-radius:8px;padding:12px 16px;margin-bottom:16px;}
@@ -236,6 +246,7 @@
        5 company sets, etc.), not just the ones tested. */
     #cardFinancials{break-before:page;page-break-before:always;}
     .card h2{margin:-8px -12px 6px -12px;padding:4px 12px;font-size:13pt;background:transparent !important;border-radius:0;}
+    .card h2 ~ h2{margin:10px -12px 6px -12px;}
     .card h3{margin:4px 0 1px;padding-bottom:1px;font-size:12pt;border-bottom-color:#000;}
     .fin-note{font-size:10pt;margin:2px 0 6px;}
     .wrap{max-width:100%;margin:6px auto;}
@@ -735,22 +746,6 @@
     </div>
   </div>
 
-  <!-- ============ CM PDF IMPORT (วงเงินสินเชื่อ / ประวัติการซื้อขาย) ============ -->
-  <div class="bol-box" id="cmBox">
-    <div class="bol-box-row">
-      <div>
-        <strong>แนบไฟล์ PDF หรือ Word เพิ่มเติม (รายงาน Comment) เพื่อดึงข้อมูลวงเงินสินเชื่ออัตโนมัติ</strong>
-        <div class="hint">ระบบจะอ่านข้อมูล รหัสลูกค้า, ระยะเวลาเครดิต และยอดขายสูงสุด 5 ปีล่าสุด จากไฟล์ (รองรับ .pdf และ .docx) แล้วนำมากรอกในช่องของบริษัทที่ตรงกัน (SCE/SCR/SCO/SCORP) ให้อัตโนมัติ &mdash; กรุณาตรวจสอบความถูกต้องอีกครั้งก่อนบันทึก</div>
-      </div>
-      <div>
-        <label class="small-btn" for="cmFile" style="cursor:pointer;display:inline-block;min-width:190px;text-align:center;font-size:14pt;">เลือกไฟล์ Comment (PDF/Word)</label>
-        <input type="file" id="cmFile" accept="application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none;">
-        <button type="button" class="small-btn" id="btnClearCm" style="margin-left:6px;min-width:190px;text-align:center;font-size:14pt;">ล้างข้อมูลที่นำเข้า</button>
-      </div>
-    </div>
-    <div id="cmStatus" class="bol-status"></div>
-  </div>
-
   <!-- ============ SCOPE SELECTOR: SCE / SCR / SCE-SCR / SCO / SCORP ============ -->
   <div class="scope-box" id="creditScopeBox">
     <label for="g_credit_count">จำนวนชุดข้อมูลวงเงินสินเชื่อ:</label>
@@ -823,15 +818,6 @@
 
       <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="sce_affiliated_credit" placeholder="-"></div>
     </div>
-
-    <h3>ประวัติการซื้อขาย</h3>
-
-    <table class="hist" id="sce_hist_table">
-      <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <div class="hist-actions"><button class="small-btn" type="button" id="sce_hist_add_btn" onclick="addHistRow('sce')">+ เพิ่มปี</button></div>
-
   </div>
 
   <!-- ============ SECTION: SCR ============ -->
@@ -854,15 +840,6 @@
 
       <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="scr_affiliated_credit" placeholder="-"></div>
     </div>
-
-    <h3>ประวัติการซื้อขาย</h3>
-
-    <table class="hist" id="scr_hist_table">
-      <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <div class="hist-actions"><button class="small-btn" type="button" id="scr_hist_add_btn" onclick="addHistRow('scr')">+ เพิ่มปี</button></div>
-
   </div>
 
   <!-- ============ SECTION: SCE/SCR (COMBINED) ============ -->
@@ -885,15 +862,6 @@
 
       <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="scescr_affiliated_credit" placeholder="-"></div>
     </div>
-
-    <h3>ประวัติการซื้อขาย</h3>
-
-    <table class="hist" id="scescr_hist_table">
-      <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <div class="hist-actions"><button class="small-btn" type="button" id="scescr_hist_add_btn" onclick="addHistRow('scescr')">+ เพิ่มปี</button></div>
-
   </div>
 
   <!-- ============ SECTION: SCO ============ -->
@@ -921,15 +889,6 @@
         <select id="sco_rehab_check"><option>ไม่พบประวัติ</option><option>พบประวัติ</option></select>
       </div>
     </div>
-
-    <h3>ประวัติการซื้อขาย</h3>
-
-    <table class="hist" id="sco_hist_table">
-      <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <div class="hist-actions"><button class="small-btn" type="button" id="sco_hist_add_btn" onclick="addHistRow('sco')">+ เพิ่มปี</button></div>
-
   </div>
 
   <!-- ============ SECTION: SCORP ============ -->
@@ -952,15 +911,330 @@
 
       <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="scorp_affiliated_credit" placeholder="-"></div>
     </div>
+  </div>
 
-    <h3>ประวัติการซื้อขาย</h3>
+  <!-- ============ ลูกค้ามีวงเงินสินเชื่อเดิมหรือไม่ - toggle ที่ควบคุมว่าจะ
+       แสดงกล่องเลือกจำนวนชุด/บริษัท (มิเรอร์) และการ์ด "ข้อมูลวงเงินสินเชื่อ
+       (Comment ลูกค้าที่มีอยู่เดิม)" ทั้งหมดหรือไม่ - เลือก "ไม่มี" เพื่อซ่อน
+       ทั้งส่วนสำหรับลูกค้าใหม่ที่ไม่มีวงเงินสินเชื่อเดิมในบริษัทเครือเลย
+       (วางไว้ก่อนกล่องแนบไฟล์ Comment ตามที่ผู้ใช้ระบุ) ============ -->
+  <div class="scope-box" id="oldCreditExistBox">
+    <label for="g_old_credit_exist">ลูกค้ามีวงเงินสินเชื่อเดิมหรือไม่:</label>
+    <select id="g_old_credit_exist">
+      <option value="yes" selected>มี</option>
+      <option value="no">ไม่มี</option>
+    </select>
+  </div>
+
+  <!-- ============ CM PDF IMPORT (ข้อมูลวงเงินสินเชื่อเดิม - ลูกค้าที่มีอยู่เดิม) ============ -->
+  <div class="bol-box" id="cmOldBox">
+    <div class="bol-box-row">
+      <div>
+        <strong>แนบไฟล์ PDF หรือ Word (รายงาน Comment) เพื่อดึงข้อมูลวงเงินสินเชื่อเดิมอัตโนมัติ</strong>
+        <div class="hint">ใช้ในกรณีลูกค้าใหม่รายนี้มีวงเงินสินเชื่อเดิมอยู่แล้วในบริษัทเครือ ระบบจะอ่านข้อมูล รหัสลูกค้า, วงเงินสินเชื่อเดิม, จำนวนที่ใช้ไป, ระยะเวลาเครดิต และยอดขายสูงสุด 5 ปีล่าสุด จากไฟล์ (รองรับ .pdf และ .docx) แล้วนำมากรอกในช่อง "ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม)" ของบริษัทที่ตรงกัน (SCE/SCR/SCO/SCORP) ให้อัตโนมัติเท่านั้น (ไม่กรอกลงในช่อง "ขอวงเงินสินเชื่อ" ด้านบน ซึ่งต้องกรอกเองทั้งหมด) &mdash; กรุณาตรวจสอบความถูกต้องอีกครั้งก่อนบันทึก</div>
+      </div>
+      <div>
+        <label class="small-btn" for="cmFileOld" style="cursor:pointer;display:inline-block;min-width:190px;text-align:center;font-size:14pt;">เลือกไฟล์ Comment (PDF/Word)</label>
+        <input type="file" id="cmFileOld" accept="application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none;">
+        <button type="button" class="small-btn" id="btnClearCmOld" style="margin-left:6px;min-width:190px;text-align:center;font-size:14pt;">ล้างข้อมูลที่นำเข้า</button>
+      </div>
+    </div>
+    <div id="cmOldStatus" class="bol-status"></div>
+  </div>
+
+  <!-- ============ SCOPE SELECTOR (MIRROR - fully independent from the
+       primary selector above the "ขอวงเงินสินเชื่อ" cards; this copy only
+       controls the "ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม)" cards
+       below, and only when "ลูกค้ามีวงเงินสินเชื่อเดิมหรือไม่" = "มี") ============ -->
+  <div class="scope-box" id="creditScopeBoxMirror">
+    <label for="g_credit_count_mirror">จำนวนชุดข้อมูลวงเงินสินเชื่อ:</label>
+    <select id="g_credit_count_mirror">
+      <option value="1">1 ชุด</option>
+      <option value="2">2 ชุด</option>
+      <option value="3">3 ชุด</option>
+      <option value="4">4 ชุด</option>
+      <option value="5">5 ชุด</option>
+    </select>
+    <label for="g_company_1_mirror" style="margin-left:8px;">บริษัทชุดที่ 1:</label>
+    <select id="g_company_1_mirror" class="company-pick">
+      <option value="sce" selected>SCE</option>
+      <option value="scr">SCR</option>
+      <option value="scescr">SCE/SCR</option>
+      <option value="sco">SCO</option>
+      <option value="scorp">SCORP</option>
+    </select>
+    <label for="g_company_2_mirror" id="lbl_company_2_mirror" style="margin-left:8px;display:none;">บริษัทชุดที่ 2:</label>
+    <select id="g_company_2_mirror" class="company-pick" style="display:none;">
+      <option value="sce">SCE</option>
+      <option value="scr" selected>SCR</option>
+      <option value="scescr">SCE/SCR</option>
+      <option value="sco">SCO</option>
+      <option value="scorp">SCORP</option>
+    </select>
+    <label for="g_company_3_mirror" id="lbl_company_3_mirror" style="margin-left:8px;display:none;">บริษัทชุดที่ 3:</label>
+    <select id="g_company_3_mirror" class="company-pick" style="display:none;">
+      <option value="sce">SCE</option>
+      <option value="scr">SCR</option>
+      <option value="scescr" selected>SCE/SCR</option>
+      <option value="sco">SCO</option>
+      <option value="scorp">SCORP</option>
+    </select>
+    <label for="g_company_4_mirror" id="lbl_company_4_mirror" style="margin-left:8px;display:none;">บริษัทชุดที่ 4:</label>
+    <select id="g_company_4_mirror" class="company-pick" style="display:none;">
+      <option value="sce">SCE</option>
+      <option value="scr">SCR</option>
+      <option value="scescr">SCE/SCR</option>
+      <option value="sco" selected>SCO</option>
+      <option value="scorp">SCORP</option>
+    </select>
+    <label for="g_company_5_mirror" id="lbl_company_5_mirror" style="margin-left:8px;display:none;">บริษัทชุดที่ 5:</label>
+    <select id="g_company_5_mirror" class="company-pick" style="display:none;">
+      <option value="sce">SCE</option>
+      <option value="scr">SCR</option>
+      <option value="scescr">SCE/SCR</option>
+      <option value="sco">SCO</option>
+      <option value="scorp" selected>SCORP</option>
+    </select>
+  </div>
+
+  <!-- ============ SECTION: SCE (ข้อมูลวงเงินสินเชื่อเดิม) ============ -->
+  <div class="card sce old" id="cardSCEOld">
+    <h2>ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม) &mdash; SCE</h2>
+    <div class="grid cols3">
+      <div class="field"><label>รหัสลูกค้า</label><input type="text" id="sce_old_code"></div>
+      <div class="field"><label>สังกัดลูกค้า</label><input type="text" id="sce_old_affiliation" value="SCE"></div>
+      <div class="field"><label>ชื่อพนักงานขาย</label><input type="text" id="sce_old_sales_rep"></div>
+
+      <div class="field"><label>วงเงินสินเชื่อเดิม</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="sce_old_orig_limit"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>วงเงินที่ขออนุมัติครั้งนี้</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="sce_old_requested"><span class="unit">บาท</span></div>
+        <span class="hint">ระบุค่าลบ หากต้องการ "ลดวงเงิน"</span>
+      </div>
+      <div class="field"><label>วงเงินสินเชื่อรวม (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="sce_old_total" readonly><span class="unit">บาท</span></div>
+      </div>
+
+      <div class="field"><label>ระยะเวลาเครดิต</label><input type="text" id="sce_old_credit_term" placeholder="เช่น 60 วัน"></div>
+      <div class="field"><label>หลักประกันใหม่</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="sce_old_collateral" placeholder="0"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>หลักประกัน / วงเงินรวม (คำนวณอัตโนมัติ)</label><input class="computed-input" type="text" id="sce_old_collateral_pct" readonly></div>
+
+      <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="sce_old_affiliated_credit" placeholder="-"></div>
+    </div>
+
+    <h3>วงเงินที่กิจการใช้ไป &amp; ประวัติการซื้อขาย</h3>
+    <div class="grid cols3">
+      <div class="field"><label>จำนวนที่ใช้ไป</label>
+        <div class="inline-unit"><input class="used-num-input" type="text" inputmode="decimal" id="sce_old_used"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>เกินวงเงิน (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="sce_old_over" readonly><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>คงเหลือ (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="sce_old_remaining" readonly><span class="unit">บาท</span></div>
+      </div>
+    </div>
+
+    <table class="hist" id="sce_hist_table">
+      <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="hist-actions"><button class="small-btn" type="button" id="sce_hist_add_btn" onclick="addHistRow('sce')">+ เพิ่มปี</button></div>
+  </div>
+
+  <!-- ============ SECTION: SCR (ข้อมูลวงเงินสินเชื่อเดิม) ============ -->
+  <div class="card scr old" id="cardSCROld" style="display:none;">
+    <h2>ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม) &mdash; SCR</h2>
+    <div class="grid cols3">
+      <div class="field"><label>รหัสลูกค้า</label><input type="text" id="scr_old_code"></div>
+      <div class="field"><label>สังกัดลูกค้า</label><input type="text" id="scr_old_affiliation" value="SCR"></div>
+      <div class="field"><label>ชื่อพนักงานขาย</label><input type="text" id="scr_old_sales_rep"></div>
+
+      <div class="field"><label>วงเงินสินเชื่อเดิม</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="scr_old_orig_limit"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>วงเงินที่ขออนุมัติครั้งนี้</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="scr_old_requested"><span class="unit">บาท</span></div>
+        <span class="hint">ระบุค่าลบ หากต้องการ "ลดวงเงิน"</span>
+      </div>
+      <div class="field"><label>วงเงินสินเชื่อรวม (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scr_old_total" readonly><span class="unit">บาท</span></div>
+      </div>
+
+      <div class="field"><label>ระยะเวลาเครดิต</label><input type="text" id="scr_old_credit_term" placeholder="เช่น 60 วัน"></div>
+      <div class="field"><label>หลักประกันใหม่</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="scr_old_collateral" placeholder="0"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>หลักประกัน / วงเงินรวม (คำนวณอัตโนมัติ)</label><input class="computed-input" type="text" id="scr_old_collateral_pct" readonly></div>
+
+      <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="scr_old_affiliated_credit" placeholder="-"></div>
+    </div>
+
+    <h3>วงเงินที่กิจการใช้ไป &amp; ประวัติการซื้อขาย</h3>
+    <div class="grid cols3">
+      <div class="field"><label>จำนวนที่ใช้ไป</label>
+        <div class="inline-unit"><input class="used-num-input" type="text" inputmode="decimal" id="scr_old_used"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>เกินวงเงิน (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scr_old_over" readonly><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>คงเหลือ (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scr_old_remaining" readonly><span class="unit">บาท</span></div>
+      </div>
+    </div>
+
+    <table class="hist" id="scr_hist_table">
+      <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="hist-actions"><button class="small-btn" type="button" id="scr_hist_add_btn" onclick="addHistRow('scr')">+ เพิ่มปี</button></div>
+  </div>
+
+  <!-- ============ SECTION: SCE/SCR (ข้อมูลวงเงินสินเชื่อเดิม) ============ -->
+  <div class="card scescr old" id="cardSCESCROld" style="display:none;">
+    <h2>ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม) &mdash; SCE/SCR</h2>
+    <div class="grid cols3">
+      <div class="field"><label>รหัสลูกค้า</label><input type="text" id="scescr_old_code"></div>
+      <div class="field"><label>สังกัดลูกค้า</label><input type="text" id="scescr_old_affiliation" value="SCE/SCR"></div>
+      <div class="field"><label>ชื่อพนักงานขาย</label><input type="text" id="scescr_old_sales_rep"></div>
+
+      <div class="field"><label>วงเงินสินเชื่อเดิม</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="scescr_old_orig_limit"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>วงเงินที่ขออนุมัติครั้งนี้</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="scescr_old_requested"><span class="unit">บาท</span></div>
+        <span class="hint">ระบุค่าลบ หากต้องการ "ลดวงเงิน"</span>
+      </div>
+      <div class="field"><label>วงเงินสินเชื่อรวม (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scescr_old_total" readonly><span class="unit">บาท</span></div>
+      </div>
+
+      <div class="field"><label>ระยะเวลาเครดิต</label><input type="text" id="scescr_old_credit_term" placeholder="เช่น 60 วัน"></div>
+      <div class="field"><label>หลักประกันใหม่</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="scescr_old_collateral" placeholder="0"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>หลักประกัน / วงเงินรวม (คำนวณอัตโนมัติ)</label><input class="computed-input" type="text" id="scescr_old_collateral_pct" readonly></div>
+
+      <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="scescr_old_affiliated_credit" placeholder="-"></div>
+    </div>
+
+    <h3>วงเงินที่กิจการใช้ไป &amp; ประวัติการซื้อขาย</h3>
+    <div class="grid cols3">
+      <div class="field"><label>จำนวนที่ใช้ไป</label>
+        <div class="inline-unit"><input class="used-num-input" type="text" inputmode="decimal" id="scescr_old_used"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>เกินวงเงิน (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scescr_old_over" readonly><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>คงเหลือ (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scescr_old_remaining" readonly><span class="unit">บาท</span></div>
+      </div>
+    </div>
+
+    <table class="hist" id="scescr_hist_table">
+      <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="hist-actions"><button class="small-btn" type="button" id="scescr_hist_add_btn" onclick="addHistRow('scescr')">+ เพิ่มปี</button></div>
+  </div>
+
+  <!-- ============ SECTION: SCO (ข้อมูลวงเงินสินเชื่อเดิม) ============ -->
+  <div class="card sco old" id="cardSCOOld" style="display:none;">
+    <h2>ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม) &mdash; SCO</h2>
+    <div class="grid cols3">
+      <div class="field"><label>รหัสลูกค้า</label><input type="text" id="sco_old_code"></div>
+      <div class="field"><label>สังกัดลูกค้า</label><input type="text" id="sco_old_affiliation" value="SCO"></div>
+      <div class="field"><label>ชื่อพนักงานขาย</label><input type="text" id="sco_old_sales_rep"></div>
+
+      <div class="field"><label>วงเงินสินเชื่อเดิม</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="sco_old_orig_limit"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>วงเงินที่ขออนุมัติครั้งนี้</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="sco_old_requested"><span class="unit">บาท</span></div>
+        <span class="hint">ระบุค่าลบ หากต้องการ "ลดวงเงิน"</span>
+      </div>
+      <div class="field"><label>วงเงินสินเชื่อรวม (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="sco_old_total" readonly><span class="unit">บาท</span></div>
+      </div>
+
+      <div class="field"><label>ระยะเวลาเครดิต</label><input type="text" id="sco_old_credit_term" placeholder="เช่น 60 วัน"></div>
+      <div class="field"><label>หลักประกันใหม่</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="sco_old_collateral" placeholder="0"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>หลักประกัน / วงเงินรวม (คำนวณอัตโนมัติ)</label><input class="computed-input" type="text" id="sco_old_collateral_pct" readonly></div>
+
+      <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="sco_old_affiliated_credit" placeholder="-"></div>
+    </div>
+
+    <h3>วงเงินที่กิจการใช้ไป &amp; ประวัติการซื้อขาย</h3>
+    <div class="grid cols3">
+      <div class="field"><label>จำนวนที่ใช้ไป</label>
+        <div class="inline-unit"><input class="used-num-input" type="text" inputmode="decimal" id="sco_old_used"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>เกินวงเงิน (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="sco_old_over" readonly><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>คงเหลือ (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="sco_old_remaining" readonly><span class="unit">บาท</span></div>
+      </div>
+    </div>
+
+    <table class="hist" id="sco_hist_table">
+      <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="hist-actions"><button class="small-btn" type="button" id="sco_hist_add_btn" onclick="addHistRow('sco')">+ เพิ่มปี</button></div>
+  </div>
+
+  <!-- ============ SECTION: SCORP (ข้อมูลวงเงินสินเชื่อเดิม) ============ -->
+  <div class="card scorp old" id="cardSCORPOld" style="display:none;">
+    <h2>ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม) &mdash; SCORP</h2>
+    <div class="grid cols3">
+      <div class="field"><label>รหัสลูกค้า</label><input type="text" id="scorp_old_code"></div>
+      <div class="field"><label>สังกัดลูกค้า</label><input type="text" id="scorp_old_affiliation" value="SCORP"></div>
+      <div class="field"><label>ชื่อพนักงานขาย</label><input type="text" id="scorp_old_sales_rep"></div>
+
+      <div class="field"><label>วงเงินสินเชื่อเดิม</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="scorp_old_orig_limit"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>วงเงินที่ขออนุมัติครั้งนี้</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="scorp_old_requested"><span class="unit">บาท</span></div>
+        <span class="hint">ระบุค่าลบ หากต้องการ "ลดวงเงิน"</span>
+      </div>
+      <div class="field"><label>วงเงินสินเชื่อรวม (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scorp_old_total" readonly><span class="unit">บาท</span></div>
+      </div>
+
+      <div class="field"><label>ระยะเวลาเครดิต</label><input type="text" id="scorp_old_credit_term" placeholder="เช่น 60 วัน"></div>
+      <div class="field"><label>หลักประกันใหม่</label>
+        <div class="inline-unit"><input class="fin-num-input" type="text" inputmode="decimal" id="scorp_old_collateral" placeholder="0"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>หลักประกัน / วงเงินรวม (คำนวณอัตโนมัติ)</label><input class="computed-input" type="text" id="scorp_old_collateral_pct" readonly></div>
+
+      <div class="field"><label>บริษัทในเครือที่มีสินเชื่อ</label><input type="text" id="scorp_old_affiliated_credit" placeholder="-"></div>
+    </div>
+
+    <h3>วงเงินที่กิจการใช้ไป &amp; ประวัติการซื้อขาย</h3>
+    <div class="grid cols3">
+      <div class="field"><label>จำนวนที่ใช้ไป</label>
+        <div class="inline-unit"><input class="used-num-input" type="text" inputmode="decimal" id="scorp_old_used"><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>เกินวงเงิน (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scorp_old_over" readonly><span class="unit">บาท</span></div>
+      </div>
+      <div class="field"><label>คงเหลือ (คำนวณอัตโนมัติ)</label>
+        <div class="inline-unit"><input class="computed-input" type="text" id="scorp_old_remaining" readonly><span class="unit">บาท</span></div>
+      </div>
+    </div>
 
     <table class="hist" id="scorp_hist_table">
       <thead><tr><th style="width:40%">ปี</th><th style="width:40%">มูลค่าการซื้อขาย (บาท)</th><th style="width:20%"></th></tr></thead>
       <tbody></tbody>
     </table>
     <div class="hist-actions"><button class="small-btn" type="button" id="scorp_hist_add_btn" onclick="addHistRow('scorp')">+ เพิ่มปี</button></div>
-
   </div>
 
   <!-- ============ SECTION: ภ.พ.30 & บัญชีธนาคาร ============ -->
@@ -1793,14 +2067,21 @@ function loadHist(prefix, rows){
 /* ============================================================
    MAIN RECALC (SCE/SCO derived fields)
    ============================================================ */
-function getSelectedCompanies(){
-  const count = parseInt(getVal('g_credit_count') || '1', 10);
+function getSelectedCompanies(suffix){
+  // suffix lets this same logic serve the second, fully independent
+  // "จำนวนชุด / เลือกบริษัท" selector (ids "..._mirror") that sits above the
+  // "ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม)" cards - it picks which
+  // OLD-data cards show, completely separately from which primary
+  // "ขอวงเงินสินเชื่อ" cards the un-suffixed selector shows. Every existing
+  // call keeps working unchanged (suffix defaults to '' = the primary ids).
+  suffix = suffix || '';
+  const count = parseInt(getVal('g_credit_count'+suffix) || '1', 10);
   const set = new Set();
-  if(count>=1) set.add(getVal('g_company_1') || 'sce');
-  if(count>=2) set.add(getVal('g_company_2') || 'scr');
-  if(count>=3) set.add(getVal('g_company_3') || 'scescr');
-  if(count>=4) set.add(getVal('g_company_4') || 'sco');
-  if(count>=5) set.add(getVal('g_company_5') || 'scorp');
+  if(count>=1) set.add(getVal('g_company_1'+suffix) || 'sce');
+  if(count>=2) set.add(getVal('g_company_2'+suffix) || 'scr');
+  if(count>=3) set.add(getVal('g_company_3'+suffix) || 'scescr');
+  if(count>=4) set.add(getVal('g_company_4'+suffix) || 'sco');
+  if(count>=5) set.add(getVal('g_company_5'+suffix) || 'scorp');
   return set;
 }
 function updateBranchField(){
@@ -1838,6 +2119,29 @@ function updatePP30BankVisibility(){
 function effectiveBankAccType(){
   return getVal('cc_bank_acc_type');
 }
+// The scope-selector box ("จำนวนชุดข้อมูลวงเงินสินเชื่อ" + "บริษัทชุดที่ N") is
+// duplicated on the page (once above the credit-request cards, once again
+// above the CM-import/old-customer cards). Per the user's explicit request,
+// the two copies are fully independent - no value syncing in either
+// direction. The ORIGINAL ids feed getSelectedCompanies() for the primary
+// "ขอวงเงินสินเชื่อ" card visibility, while the "..._mirror" ids feed
+// getSelectedCompanies('_mirror') for the "ข้อมูลวงเงินสินเชื่อ (Comment
+// ลูกค้าที่มีอยู่เดิม)" card visibility (see updateCreditScope()). This
+// function only shows/hides the mirror's OWN "บริษัทชุดที่ 2..5" pickers
+// based on the mirror's OWN count dropdown.
+function updateScopeMirrorVisibility(){
+  const mirrorCount = parseInt(getVal('g_credit_count_mirror') || '1', 10);
+  const setDisp = (id, show)=>{ const el = document.getElementById(id); if(el) el.style.display = show ? '' : 'none'; };
+  setDisp('g_company_2_mirror', mirrorCount>=2);
+  setDisp('lbl_company_2_mirror', mirrorCount>=2);
+  setDisp('g_company_3_mirror', mirrorCount>=3);
+  setDisp('lbl_company_3_mirror', mirrorCount>=3);
+  setDisp('g_company_4_mirror', mirrorCount>=4);
+  setDisp('lbl_company_4_mirror', mirrorCount>=4);
+  setDisp('g_company_5_mirror', mirrorCount>=5);
+  setDisp('lbl_company_5_mirror', mirrorCount>=5);
+}
+
 function updateCreditScope(){
   const count = parseInt(getVal('g_credit_count') || '1', 10);
   const setDisp = (id, show)=>{ const el = document.getElementById(id); if(el) el.style.display = show ? '' : 'none'; };
@@ -1850,6 +2154,8 @@ function updateCreditScope(){
   setDisp('g_company_5', count>=5);
   setDisp('lbl_company_5', count>=5);
 
+  updateScopeMirrorVisibility();
+
   const selected = getSelectedCompanies();
   const showSCE = selected.has('sce');
   const showSCR = selected.has('scr');
@@ -1861,6 +2167,32 @@ function updateCreditScope(){
   setDisp('cardSCESCR', showSCESCR);
   setDisp('cardSCO', showSCO);
   setDisp('cardSCORP', showSCORP);
+  // The "ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม)" section for each
+  // company now lives in its own card (moved below the CM import box). Per
+  // the user's explicit request, its visibility is driven by the MIRROR
+  // scope selector ("..._mirror" ids) ONLY - fully independent from the
+  // primary selector above, so picking SCR in the primary box does not
+  // force the old-data card to also be SCR; the old-data cards follow
+  // whatever the mirror box (and/or the CM-detected companies, which write
+  // into the mirror ids) says. On top of that, the whole old-data section
+  // (the CM-import box + the mirror scope-selector box + every old-data
+  // card) is gated by the "ลูกค้ามีวงเงินสินเชื่อเดิมหรือไม่" toggle: pick
+  // "ไม่มี" and it all hides, regardless of what the mirror selector is set
+  // to or what's already been uploaded.
+  const oldCreditExists = getVal('g_old_credit_exist') !== 'no';
+  setDisp('cmOldBox', oldCreditExists);
+  setDisp('creditScopeBoxMirror', oldCreditExists);
+  const selectedOld = oldCreditExists ? getSelectedCompanies('_mirror') : new Set();
+  const showSCEOld = selectedOld.has('sce');
+  const showSCROld = selectedOld.has('scr');
+  const showSCESCROld = selectedOld.has('scescr');
+  const showSCOOld = selectedOld.has('sco');
+  const showSCORPOld = selectedOld.has('scorp');
+  setDisp('cardSCEOld', showSCEOld);
+  setDisp('cardSCROld', showSCROld);
+  setDisp('cardSCESCROld', showSCESCROld);
+  setDisp('cardSCOOld', showSCOOld);
+  setDisp('cardSCORPOld', showSCORPOld);
   setDisp('sumRowSCE', showSCE);
   setDisp('sumRowSCR', showSCR);
   setDisp('sumRowSCESCR', showSCESCR);
@@ -2000,6 +2332,47 @@ function recalcAll(){
     setVal(p+'_collateral_pct', denom? fmtPct(collAmounts[p]/denom) : '-');
   });
 
+  // "ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม)" - a separate, optional
+  // record of the SAME customer's existing credit line already held under
+  // this company (filled from its own Comment upload, see
+  // handleCmFileOld()), shown ahead of the new-limit-request fields above.
+  // Mirrors the total/over/remaining math CA_Credit_Application_Form_
+  // ลูกค้าเก่า.html uses for its (only) card per company.
+  const oldTotals = {};
+  ['sce','scr','scescr','sco','scorp'].forEach(p=>{
+    oldTotals[p] = num(p+'_old_orig_limit') + num(p+'_old_requested');
+  });
+  // "หลักประกัน / วงเงินรวม (คำนวณอัตโนมัติ)" for the old-data cards - same
+  // combined-denominator idea as the primary cards' collateral_pct above:
+  // when more than one old-data company is in scope (per the MIRROR scope
+  // selector), each selected company's own หลักประกันใหม่ is judged against
+  // the SUM of "วงเงินสินเชื่อรวม (คำนวณอัตโนมัติ)" (orig_limit+requested)
+  // across every selected old-data company, not just its own - the
+  // collateral is backing the combined existing exposure as a whole. With
+  // only 1 old-data company in scope this reduces to the previous
+  // per-company behavior (denominator = that company's own total).
+  const selectedOldForColl = getSelectedCompanies('_mirror');
+  const combinedOldTotal = selectedOldForColl.size > 1
+    ? Array.from(selectedOldForColl).reduce((sum,p)=> sum + (oldTotals[p]||0), 0)
+    : null;
+  ['sce','scr','scescr','sco','scorp'].forEach(p=>{
+    const orig = num(p+'_old_orig_limit'), req = num(p+'_old_requested'), total = oldTotals[p];
+    setVal(p+'_old_total', fmt(total));
+    const coll = num(p+'_old_collateral');
+    const collDenom = (combinedOldTotal!==null && selectedOldForColl.has(p)) ? combinedOldTotal : total;
+    setVal(p+'_old_collateral_pct', collDenom? fmtPct(coll/collDenom) : '-');
+    // "_old_used" is stored as a negative (or zero) draw-down amount, same
+    // convention as formatUsedInput uses for "_used" elsewhere in this file
+    // - take the magnitude here so the over/remaining math works regardless
+    // of how it was entered or auto-filled.
+    const used = Math.abs(num(p+'_old_used'));
+    const rawRemain = orig - used;
+    const over = rawRemain < 0 ? rawRemain : 0;
+    const remain = rawRemain > 0 ? rawRemain : 0;
+    setVal(p+'_old_over', over? fmt(over,2) : '-');
+    setVal(p+'_old_remaining', remain? fmt(remain,2) : '-');
+  });
+
   // summary table
   document.getElementById('sum_sce_req').textContent = fmt(sceReq)+' บาท';
   document.getElementById('sum_scr_req').textContent = fmt(scrReq)+' บาท';
@@ -2062,7 +2435,7 @@ function computeOverviewRevenueText(){
   if(raw.some(v => v==='' || v==='-')) return null;
   const vals = YEARS.map(y => num(`is_rev_total_${y}`));
   const yy = YEARS.map(y => yearShort(y)); // e.g. 'y2568' -> '68' (follows current YEAR_LABELS)
-  const parts = vals.map(v => `${(v/1e6).toFixed(2)} ลบ.`);
+  const parts = vals.map(v => `${fmt(v/1e6, 2)} ลบ.`);
   const valueText = parts.length > 1
     ? parts.slice(0, -1).join(' , ') + ' และ ' + parts[parts.length - 1]
     : parts[0];
@@ -2073,7 +2446,7 @@ function computeOverviewRevenueText(){
 // loss: parenthesised without a minus sign (e.g. -3,650,000 -> "(3.65) ลบ."),
 // matching the accounting convention the user's own example text used.
 function fmtMbSigned(v){
-  const mb = (Math.abs(v)/1e6).toFixed(2);
+  const mb = fmt(Math.abs(v)/1e6, 2);
   return v < 0 ? `(${mb}) ลบ.` : `${mb} ลบ.`;
 }
 
@@ -2137,12 +2510,24 @@ function computeRatioDeText(){
 function computeFinSummaryText(){
   const labelMap = {scescr:'SCE/SCR'};
   const amounts = Array.from(getSelectedCompanies())
-    .map(prefix => ({label: labelMap[prefix] || prefix.toUpperCase(), amt: num(prefix+'_requested')}))
+    .map(prefix => ({
+      label: labelMap[prefix] || prefix.toUpperCase(),
+      amt: num(prefix+'_requested'),
+      // "ระยะเวลาเครดิต" from that same company's primary card (e.g. "60
+      // วัน") - appended right after the requested amount, per the user's
+      // request, so the approval line also states the credit term being
+      // proposed. Left out of the sentence entirely (not "ระยะเวลาเครดิต -")
+      // when that company hasn't had it filled in yet.
+      creditTerm: (getVal(prefix+'_credit_term') || '').trim(),
+    }))
     .filter(a => a.amt > 0);
   if(!amounts.length) return null;
   const custName = getVal('g_cust_th') || '[ระบุชื่อลูกค้า]';
   const lines = [
-    ...amounts.map(a => `ครั้งนี้ เห็นควรขออนุมัติวงเงินสินเชื่อเครดิตการค้า ใน ${a.label} จำนวน ${fmt(a.amt)} บาท ให้แก่ลูกค้าราย ${custName}`),
+    ...amounts.map(a => {
+      const termText = a.creditTerm ? ` ระยะเวลาเครดิต ${a.creditTerm}` : '';
+      return `ครั้งนี้ เห็นควรขออนุมัติวงเงินสินเชื่อเครดิตการค้า ใน ${a.label} จำนวน ${fmt(a.amt)} บาท${termText} ให้แก่ลูกค้าราย ${custName}`;
+    }),
     '- หลักทรัพย์ค้ำประกัน : ไม่มี',
     '- เงื่อนไขอื่นๆ : ไม่มี',
   ];
@@ -2276,12 +2661,20 @@ function clearForm(){
   document.querySelectorAll('select').forEach(el=> el.selectedIndex=0);
   // "สังกัดลูกค้า" is fixed by which company section it is (not customer-
   // specific data to clear out) - keep it auto-filled after clearing, same
-  // as the page's own static default when first loaded.
+  // as the page's own static default when first loaded. This applies to
+  // BOTH the primary "ขอวงเงินสินเชื่อ" card's affiliation field and its
+  // "ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม)" counterpart - both
+  // show the same fixed company name, so both need to be restored here.
   setVal('sce_affiliation', 'SCE');
   setVal('scr_affiliation', 'SCR');
   setVal('scescr_affiliation', 'SCE/SCR');
   setVal('sco_affiliation', 'SCO');
   setVal('scorp_affiliation', 'SCORP');
+  setVal('sce_old_affiliation', 'SCE');
+  setVal('scr_old_affiliation', 'SCR');
+  setVal('scescr_old_affiliation', 'SCE/SCR');
+  setVal('sco_old_affiliation', 'SCO');
+  setVal('scorp_old_affiliation', 'SCORP');
   // Same reasoning as the affiliation fields above: "วันที่" is always
   // today's actual date, refreshed on every clear - not blanked out.
   setVal('g_date', thaiToday());
@@ -2406,6 +2799,28 @@ async function exportExcel(){
   r++;
 
   function pushCompanySection(prefix, label){
+    mergeRow(`ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม) - ${label}`, styleSectionHeader, 20);
+    fieldRow([{label:'รหัสลูกค้า', value:getVal(prefix+'_old_code')}, {label:'สังกัดลูกค้า', value:getVal(prefix+'_old_affiliation')}, {label:'ชื่อพนักงานขาย', value:getVal(prefix+'_old_sales_rep')}]);
+    fieldRow([
+      {label:'วงเงินสินเชื่อเดิม (บาท)', value:num(prefix+'_old_orig_limit'), numFmt:NUMFMT},
+      {label:'วงเงินที่ขออนุมัติครั้งนี้ (บาท)', value:num(prefix+'_old_requested'), numFmt:NUMFMT},
+      {label:'วงเงินสินเชื่อรวม (บาท)', value:num(prefix+'_old_orig_limit')+num(prefix+'_old_requested'), numFmt:NUMFMT},
+    ]);
+    fieldRow([
+      {label:'ระยะเวลาเครดิต', value:getVal(prefix+'_old_credit_term')},
+      {label:'หลักประกันใหม่ (บาท)', value:num(prefix+'_old_collateral'), numFmt:NUMFMT},
+      {label:'หลักประกัน / วงเงินรวม', value:getVal(prefix+'_old_collateral_pct')},
+    ]);
+    fieldRow([
+      {label:'บริษัทในเครือที่มีสินเชื่อ', value:getVal(prefix+'_old_affiliated_credit')||'-'},
+      {label:'จำนวนที่ใช้ไป (บาท)', value:num(prefix+'_old_used'), numFmt:NUMFMT},
+    ]);
+    fieldRow([
+      {label:'เกินวงเงิน', value:getVal(prefix+'_old_over')},
+      {label:'คงเหลือ', value:getVal(prefix+'_old_remaining')},
+    ]);
+    r++;
+
     mergeRow(`ขอวงเงินสินเชื่อ - ${label}`, styleSectionHeader, 20);
     fieldRow([{label:'รหัสลูกค้า', value:getVal(prefix+'_code')}, {label:'สังกัดลูกค้า', value:getVal(prefix+'_affiliation')}, {label:'ชื่อพนักงานขาย', value:getVal(prefix+'_sales_rep')}]);
     fieldRow([
@@ -3529,12 +3944,6 @@ function clearBolImportedFields(){
    and "บาท"/"ฉบับ" units aren't marks, so they extract cleanly straight off
    the raw line once the label's own text has located it.
    ============================================================ */
-function setCmStatus(msg, kind){
-  const el = document.getElementById('cmStatus');
-  el.textContent = msg;
-  el.className = 'bol-status' + (kind? ' '+kind : '');
-}
-
 // "SCE/SCR" is a combined entity (one customer sold to under both SCE and
 // SCR together) and can appear in a CM report's own section header exactly
 // like the single-entity codes below - e.g. a boxed "SCE/SCR" at the top of
@@ -3901,30 +4310,52 @@ async function extractCmData(file){
   return blocks;
 }
 
-// Same "undo just this import" bookkeeping as lastBolFilledIds above, plus
-// the list of company prefixes whose purchase-history mini table (a
-// dynamically-built list of rows, not a plain input) the import replaced,
-// so clearCmImportedFields() can empty those tables too.
-let lastCmFilledIds = [];
-let lastCmFilledHistPrefixes = [];
-async function handleCmFile(file){
+/* ============================================================
+   CM IMPORT - "ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม)"
+
+   The one Comment upload on this form. It only ever fills the "existing
+   account" fields inserted ahead of each company's "ขอวงเงินสินเชื่อ"
+   section - รหัสลูกค้า, วงเงินสินเชื่อเดิม, ระยะเวลาเครดิต, จำนวนที่ใช้ไป and
+   the ประวัติการซื้อขาย table (id "{prefix}_hist_table", displayed inside
+   this same section) - and never touches the "ขอวงเงินสินเชื่อ" card's own
+   fields below it (those stay manual entry, since they describe the NEW
+   request rather than the customer's already-existing account). Reuses
+   extractCmData() as-is - it already parses วงเงินสินเชื่อเดิม (d.origLimit)
+   and จำนวนที่ใช้ไป (d.used) from the Comment report.
+   ============================================================ */
+let lastCmOldFilledIds = [];
+let lastCmOldFilledHistPrefixes = [];
+function setCmOldStatus(msg, kind){
+  const el = document.getElementById('cmOldStatus');
+  if(!el) return;
+  el.textContent = msg;
+  el.className = 'bol-status' + (kind? ' '+kind : '');
+}
+async function handleCmFileOld(file){
   if(!file) return;
-  setCmStatus('กำลังอ่านไฟล์...', 'busy');
-  lastCmFilledIds = [];
-  lastCmFilledHistPrefixes = [];
+  setCmOldStatus('กำลังอ่านไฟล์...', 'busy');
+  lastCmOldFilledIds = [];
+  lastCmOldFilledHistPrefixes = [];
   try{
     const blocks = await extractCmData(file);
     if(!blocks.length){
-      setCmStatus('ไม่พบรหัสบริษัท (SCE/SCR/SCO/SCORP) ในไฟล์นี้ กรุณากรอกข้อมูลด้วยตนเอง', 'err');
+      setCmOldStatus('ไม่พบรหัสบริษัท (SCE/SCR/SCO/SCORP) ในไฟล์นี้ กรุณากรอกข้อมูลด้วยตนเอง', 'err');
       return;
     }
 
-    // Show one card per company section the report actually contains, in
-    // the order they appear in the file (capped at the 5 sets the form
-    // supports), then fill each one from its own section.
+    // Reveal the right OLD-DATA cards from whatever sections this report
+    // contains. This writes into the MIRROR scope selector ("..._mirror",
+    // the one above the "ข้อมูลวงเงินสินเชื่อ (Comment ลูกค้าที่มีอยู่เดิม)"
+    // cards) ONLY - per the user's explicit request the primary "ขอวงเงิน
+    // สินเชื่อ" selector/cards above are completely independent and must
+    // not be changed by this CM upload. A successful upload also flips the
+    // "ลูกค้ามีวงเงินสินเชื่อเดิมหรือไม่" toggle to "มี" so the section this
+    // data belongs to is guaranteed visible (a user who uploads a Comment
+    // report obviously does have an existing credit line).
+    setVal('g_old_credit_exist', 'yes');
     const count = Math.min(blocks.length, 5);
-    setVal('g_credit_count', String(count));
-    const companySelectIds = ['g_company_1','g_company_2','g_company_3','g_company_4','g_company_5'];
+    setVal('g_credit_count_mirror', String(count));
+    const companySelectIds = ['g_company_1_mirror','g_company_2_mirror','g_company_3_mirror','g_company_4_mirror','g_company_5_mirror'];
     blocks.slice(0,5).forEach((b,i)=> setVal(companySelectIds[i], b.prefix));
     updateCreditScope();
 
@@ -3933,29 +4364,13 @@ async function handleCmFile(file){
     blocks.forEach(b=>{
       const prefix = b.prefix, d = b.data;
       const fields = [];
-      if(d.code){ setVal(prefix+'_code', d.code); lastCmFilledIds.push(prefix+'_code'); fields.push('รหัสลูกค้า'); }
-      // "วงเงินสินเชื่อเดิม" (d.origLimit) is intentionally not applied to any
-      // field - this form is for new customers, who have no existing limit.
-      if(d.creditDays){
-        // "ระยะเวลาเครดิต" (credit_term) is the primary field for this value -
-        // fill it the same way a person typing it in would, then reuse the
-        // form's own existing sync (see initCreditTermSync/syncCreditDaysFromTerm)
-        // so "ระยะเวลาเครดิต (วัน)" mirrors it automatically, same as manual entry.
-        setVal(prefix+'_credit_term', d.creditDays + ' วัน');
-        syncCreditDaysFromTerm(prefix);
-        lastCmFilledIds.push(prefix+'_credit_term', prefix+'_credit_days');
-        fields.push('ระยะเวลาเครดิต');
-      }
-      // "จำนวนที่ใช้ไป" (d.used) is intentionally not applied to any field -
-      // this form is for new customers, who have no prior usage to report.
-      // "ตั้งประวัติเครดิต / ระเบียบวางบิล / ระเบียบชำระเงิน / ชำระหนี้อยู่ใน
-      // ช่วง / เช็คในมือ / ประวัติเช็คคืน / ยอดค้างชำระล่าสุด" (d.creditEstablished,
-      // d.billingTerms, d.paymentTerms, d.paymentRange, d.checksOnHand,
-      // d.returnedCheck, d.latestOutstanding) are intentionally not applied
-      // to any field - those fields were dropped from this new-customer form.
+      if(d.code){ setVal(prefix+'_old_code', d.code); lastCmOldFilledIds.push(prefix+'_old_code'); fields.push('รหัสลูกค้า'); }
+      if(d.origLimit!==undefined){ setVal(prefix+'_old_orig_limit', d.origLimit); lastCmOldFilledIds.push(prefix+'_old_orig_limit'); fields.push('วงเงินสินเชื่อเดิม'); }
+      if(d.creditDays){ setVal(prefix+'_old_credit_term', d.creditDays + ' วัน'); lastCmOldFilledIds.push(prefix+'_old_credit_term'); fields.push('ระยะเวลาเครดิต'); }
+      if(d.used!==undefined){ setVal(prefix+'_old_used', d.used); lastCmOldFilledIds.push(prefix+'_old_used'); fields.push('จำนวนที่ใช้ไป'); }
       if(d.sales && d.sales.length){
         loadHist(prefix, d.sales.map(s=>({year:s.year, amount:s.amount})));
-        lastCmFilledHistPrefixes.push(prefix);
+        lastCmOldFilledHistPrefixes.push(prefix);
         fields.push('ยอดขาย (ประวัติการซื้อขาย)');
       } else {
         warnings.push(`${prefix.toUpperCase()}: ไม่พบตารางยอดขายแบบข้อความ (อาจเป็นรูปภาพ) กรุณากรอกด้วยตนเอง`);
@@ -3971,33 +4386,28 @@ async function handleCmFile(file){
       ? 'ดึงข้อมูลจากไฟล์ "'+file.name+'" สำเร็จ: ' + filledCompanies.join(' | ') + ' — กรุณาตรวจสอบความถูกต้องอีกครั้ง'
       : 'ไม่พบข้อมูลที่ตรงตามรูปแบบ Comment ในไฟล์นี้ กรุณากรอกข้อมูลด้วยตนเอง';
     if(warnings.length) msg += ' | ' + warnings.join(' ');
-    setCmStatus(msg, filledCompanies.length ? 'ok' : 'err');
+    setCmOldStatus(msg, filledCompanies.length ? 'ok' : 'err');
   } catch(err){
     console.error(err);
-    lastCmFilledIds = [];
-    lastCmFilledHistPrefixes = [];
-    setCmStatus('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + err.message, 'err');
+    lastCmOldFilledIds = [];
+    lastCmOldFilledHistPrefixes = [];
+    setCmOldStatus('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + err.message, 'err');
   }
 }
-
-// Undoes exactly the fields/history rows the most recent handleCmFile() call
-// wrote. Leaves "จำนวนชุดข้อมูลวงเงินสินเชื่อ" / company selection alone,
-// since those are structural choices the user may have set independently of
-// the import.
-function clearCmImportedFields(){
-  if(!lastCmFilledIds.length && !lastCmFilledHistPrefixes.length){
-    setCmStatus('ยังไม่มีข้อมูลที่นำเข้าจากไฟล์ Comment ให้ล้าง', '');
+function clearCmOldImportedFields(){
+  if(!lastCmOldFilledIds.length && !lastCmOldFilledHistPrefixes.length){
+    setCmOldStatus('ยังไม่มีข้อมูลที่นำเข้าจากไฟล์ Comment (ลูกค้าที่มีอยู่เดิม) ให้ล้าง', '');
     return;
   }
-  if(!confirm('ล้างเฉพาะข้อมูลที่ดึงจากไฟล์ Comment ล่าสุด (ไม่กระทบข้อมูลอื่นที่กรอกเอง) ยืนยันหรือไม่?')) return;
-  lastCmFilledIds.forEach(id => setVal(id, ''));
-  lastCmFilledHistPrefixes.forEach(prefix => loadHist(prefix, []));
-  lastCmFilledIds = [];
-  lastCmFilledHistPrefixes = [];
+  if(!confirm('ล้างเฉพาะข้อมูลที่ดึงจากไฟล์ Comment ล่าสุด (ข้อมูลวงเงินสินเชื่อเดิม) — ไม่กระทบข้อมูลอื่นที่กรอกเอง ยืนยันหรือไม่?')) return;
+  lastCmOldFilledIds.forEach(id => setVal(id, ''));
+  lastCmOldFilledHistPrefixes.forEach(prefix => loadHist(prefix, []));
+  lastCmOldFilledIds = [];
+  lastCmOldFilledHistPrefixes = [];
   formatAllFinInputs();
   formatAllUsedInputs();
   recalcAll();
-  setCmStatus('ล้างข้อมูลที่นำเข้าจากไฟล์ Comment แล้ว', '');
+  setCmOldStatus('ล้างข้อมูลที่นำเข้าจากไฟล์ Comment (ลูกค้าที่มีอยู่เดิม) แล้ว', '');
 }
 
 /* ============================================================
@@ -4024,13 +4434,13 @@ function init(){
     handleBolFile(file);
     e.target.value = '';
   });
-  document.getElementById('cmFile').addEventListener('change', (e)=>{
+  document.getElementById('cmFileOld').addEventListener('change', (e)=>{
     const file = e.target.files[0];
-    handleCmFile(file);
+    handleCmFileOld(file);
     e.target.value = '';
   });
   document.getElementById('btnClearBol').addEventListener('click', clearBolImportedFields);
-  document.getElementById('btnClearCm').addEventListener('click', clearCmImportedFields);
+  document.getElementById('btnClearCmOld').addEventListener('click', clearCmOldImportedFields);
   // "ภ.พ.30" and "บัญชีธนาคาร..." template pickers - picking an option fills
   // the textarea below with that starting text (still freely editable),
   // then the dropdown itself resets to the placeholder so it's just a
