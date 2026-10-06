@@ -316,6 +316,9 @@
     .exec-reject-note{display:none !important;}
     .exec-reject-label{display:block;margin-top:6px;}
     .exec-reject-blank{display:block;border-bottom:1px solid #000;height:50px;margin:4px 0 4px;}
+    /* typed text present: the same line becomes the text itself (grows with
+       the content), see syncExecRejectPrint() */
+    .exec-reject-blank.has-text{height:auto;min-height:0;padding:2px 0 1px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:16pt;line-height:1.35;}
     input,select,textarea{border:none !important;background:transparent !important;}
     .req-input,.computed-input{background:transparent !important;}
     /* Force-hide the native up/down spinner arrows on number inputs (e.g.
@@ -1271,7 +1274,7 @@
          the assistant also auto-sets cc_has_pp30 to "มี" for the user. -->
     <div class="visibility-toggle" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;">
       <button type="button" class="small-btn import-btn" id="btnOpenPp30Assistant" style="white-space:nowrap;">📁 เปิดผู้ช่วยกรอก ภ.พ.30 (จากไฟล์ PDF)</button>
-      <button type="button" class="small-btn import-btn" id="btnImportBankXlsx" style="white-space:nowrap;">📁 แนบไฟล์ Excel บัญชีธนาคาร (สูงสุด 3 ไฟล์ ดึงจากชีท "สรุปรวมทั้งหมด")</button>
+      <button type="button" class="small-btn import-btn" id="btnImportBankXlsx" style="white-space:nowrap;">📁 แนบไฟล์ Excel บัญชีธนาคาร (สูงสุด 3 ไฟล์ ดึงจากชีท "Statement.")</button>
       <input type="file" id="bankXlsxFileInput" accept=".xlsx,.xls" multiple style="display:none;">
     </div>
     <div class="grid cols2">
@@ -1726,14 +1729,14 @@ const scrHistDefault = [];
 const scescrHistDefault = [];
 
 const generalDefault = {
-  g_cust_th:'บริษัท จาร์ดีน เอ็นจิเนียริ่ง จำกัด', g_cust_en:'JARDINE ENGINEERING CO.,LTD.',
-  g_reg_no:'0105530034402', g_reg_date:'16/07/2530',
+  g_cust_th:'บริษัท ตัวอย่าง จำกัด', g_cust_en:'Example Company Limited',
+  g_reg_no:'1234567891234', g_reg_date:'16/07/2530',
   g_branch_type:'สำนักงานใหญ่', g_branch_detail:'',
   g_biz_type:'กิจกรรมงานวิศวกรรมและการให้คำปรึกษาทางด้านเทคนิคที่เกี่ยวข้อง',
   g_years_operating:'39 ปี 1 เดือน', g_biz_status:'ยังดำเนินกิจการอยู่',
   g_reg_capital_latest:'120,000,000 บาท',
   g_address:'252 อาคารเอสพีอี ทาวเวอร์ ชั้น 16-17 ถนนพหลโยธิน แขวงสามเสนใน เขตพญาไท จังหวัดกรุงเทพมหานคร 10400',
-  g_director_authority:'นายรัชชพันธุ์ โกวิทางกูร ลงลายมือชื่อและประทับตราสำคัญของบริษัท',
+  g_director_authority:'นายตัวอย่าง เช่น ลงลายมือชื่อและประทับตราสำคัญของบริษัท',
   g_corpus_range:'430,000 - 850,000', g_risk_level:'ระดับ 1 ความเสี่ยงต่ำ',
   g_bankruptcy_check:'ไม่พบประวัติ', g_rehab_check:'ไม่พบประวัติ'
 };
@@ -4419,6 +4422,27 @@ function clearCmOldImportedFields(){
 /* ============================================================
    INIT
    ============================================================ */
+/* ============================================================
+   PRINT / PDF: typed text in the "ระบุเงื่อนไข / รายละเอียดเพิ่มเติม" and
+   "ระบุเหตุผลที่ไม่อนุมัติ" boxes
+   ------------------------------------------------------------
+   On screen these are normal text boxes. When printed, the box itself is
+   hidden (.exec-reject-note) and the .exec-reject-blank line right after it
+   is shown instead: EMPTY box -> a blank ruled line to write on by hand;
+   box with text -> that same element shows the typed text (.has-text), so
+   nothing the person typed is lost from the printout.
+   ============================================================ */
+function syncExecRejectPrint(){
+  document.querySelectorAll('textarea.exec-reject-note').forEach(function(ta){
+    var holder = ta.parentElement;
+    var mirror = holder ? holder.querySelector('.exec-reject-blank') : null;
+    if(!mirror) return;
+    var v = (ta.value || '').trim();
+    mirror.textContent = v;
+    mirror.classList.toggle('has-text', v !== '');
+  });
+}
+
 function init(){
   buildFinTable('tbl_income', incomeRows, 'งบกำไรขาดทุน','is');
   buildFinTable('tbl_balance', balanceRows, 'งบดุล','bs');
@@ -4506,6 +4530,13 @@ function init(){
 
   initCreditTermSync();
 
+  // Print/PDF mirror of the "ระบุเงื่อนไข / รายละเอียดเพิ่มเติม" and "ระบุเหตุผลที่ไม่อนุมัติ"
+  // boxes (see syncExecRejectPrint). Kept in step on every edit, and once more
+  // right before printing so programmatic changes (draft load, clear form,
+  // example data) are covered too.
+  document.body.addEventListener('input', syncExecRejectPrint);
+  document.body.addEventListener('change', syncExecRejectPrint);
+  window.addEventListener('beforeprint', syncExecRejectPrint);
   document.body.addEventListener('input', recalcAll);
   document.body.addEventListener('change', recalcAll);
 
@@ -4531,6 +4562,7 @@ function init(){
   });
 
   loadExampleData();
+  syncExecRejectPrint();
 }
 document.addEventListener('DOMContentLoaded', init);
 </script>
@@ -6191,13 +6223,16 @@ document.addEventListener('DOMContentLoaded', init);
 <script>
 // "แนบไฟล์ Excel บัญชีธนาคาร" - client-side only (SheetJS, already loaded
 // as the xlsx.full.min.js <script> in <head>), no data leaves the browser.
-// Reads ONLY the "สรุปรวมทั้งหมด" sheet of the attached workbook (the
-// per-month sheets are ignored) and fills the ธนาคาร / ประเภทของเงินฝาก /
-// ชื่อบัญชี / เลขที่บัญชี / สรุปเงินฝาก-ถอน fields above, mirroring the
-// fixed layout produced by this team's own "แปลงรายการเดินบัญชีเป็น Excel"
-// workflow: ชื่อบัญชี/ธนาคาร/บัญชีเลขที่/ประเภทบัญชี in the header block,
-// then a เดือน/รวมฝากเงิน/รวมถอนเงิน/ยอดคงเหลือปลายงวด table ending in a
-// "เฉลี่ยเดือนละ" row.
+// Reads ONLY the summary sheet of the attached workbook - "Statement." in the
+// current template (the "ใบสรุปการสะพัดบัญชี Statement" produced by the team's
+// statement-xls workflow; the detail "STM" / per-month sheets are ignored) -
+// and fills the ธนาคาร / ประเภทของเงินฝาก / ชื่อบัญชี / เลขที่บัญชี / สรุป
+// เงินฝาก-ถอน fields above. Template layout: header block (ชื่อบัญชี /
+// ธนาคาร / ประเภทบัญชี + ณ.date + มียอดเงินคงเหลือ / วงเงิน / บัญชีเลขที่ /
+// สาขา), then a เดือน / จำนวนเงินฝากเข้า / จำนวนเงินถอนออก / ... / ยอดคงเหลือ
+// สิ้นเดือน table (one row per month in the file) ending in รวมทั้งสิ้น and
+// เฉลี่ยเดือนละ rows. The older "สรุปรวมทั้งหมด" layout (รวมฝากเงิน / รวมถอน
+// เงิน / ยอดคงเหลือปลายงวด) is still accepted as a fallback.
 (function(){
   var openBtn = document.getElementById('btnImportBankXlsx');
   var fileInput = document.getElementById('bankXlsxFileInput');
@@ -6210,6 +6245,30 @@ document.addEventListener('DOMContentLoaded', init);
     return (Number(n)/1000000).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
   }
   var DEPOSIT_TYPE_MAP = {'O/D':'กระแสรายวัน (O/D)', 'ออมทรัพย์':'ออมทรัพย์', 'กระแสรายวัน':'กระแสรายวัน', 'ฝากประจำ':'ฝากประจำ'};
+
+  // The "Statement." template prints the full product name (e.g.
+  // "เงินฝากกระแสรายวัน" / "เงินฝากออมทรัพย์") - reduce it to the short names
+  // offered in the ประเภทของเงินฝาก suggestion list.
+  function mapDepositType(raw){
+    var s = norm(raw);
+    if(!s) return '';
+    if(DEPOSIT_TYPE_MAP[s]) return DEPOSIT_TYPE_MAP[s];
+    if(s.indexOf('กระแสรายวัน') !== -1) return 'กระแสรายวัน';
+    if(s.indexOf('ออมทรัพย์') !== -1) return 'ออมทรัพย์';
+    if(s.indexOf('ประจำ') !== -1) return 'ฝากประจำ';
+    return s;
+  }
+
+  // The summary tab is called "Statement." in the template (the trailing dot
+  // is part of its real name); tolerate case/spacing/dot differences. The
+  // older exports' "สรุปรวมทั้งหมด" tab is still accepted as a fallback.
+  function pickSummarySheet(names){
+    var key = function(n){ return norm(n).toLowerCase().replace(/[\s.]+/g,''); };
+    var i;
+    for(i=0;i<names.length;i++){ if(key(names[i]) === 'statement') return names[i]; }
+    for(i=0;i<names.length;i++){ if(key(names[i]) === 'สรุปรวมทั้งหมด') return names[i]; }
+    return undefined;
+  }
 
   // Match the short bank name printed in the statement (e.g. "กสิกรไทย")
   // against the names already offered in #bankNameList, so the field ends
@@ -6229,10 +6288,10 @@ document.addEventListener('DOMContentLoaded', init);
     return s.indexOf('ธนาคาร')===0 ? s : ('ธนาคาร'+s);
   }
 
-  // Walk the "สรุปรวมทั้งหมด" sheet as a plain array-of-rows and pick out
-  // each label by scanning column A (and, for ประเภทบัญชี/มียอดเงินคงเหลือ,
-  // the rest of the row) rather than hardcoding row/column numbers - this
-  // keeps it working even if a future export adds/removes a row above.
+  // Walk the summary sheet as a plain array-of-rows and pick out each label
+  // by scanning (never hard-coded row/column numbers): the template has ONE
+  // row per month present in the statement (not a fixed 12), so the
+  // รวมทั้งสิ้น / เฉลี่ยเดือนละ rows move down or up with the month count.
   function extractFromSheetRows(rows){
     var bankName='', accountName='', accountNo='', accountType='', asOfDate='', currentBalance=null;
     var avgDeposit=null, avgWithdraw=null, avgEndBalance=null;
@@ -6242,8 +6301,10 @@ document.addEventListener('DOMContentLoaded', init);
       var a = norm(row[0]);
       if(a === 'ชื่อบัญชี') accountName = norm(row[1]);
       else if(a === 'ธนาคาร') bankName = norm(row[1]);
+      else if(a === 'ประเภทบัญชี') accountType = norm(row[1]);
       else if(a === 'บัญชีเลขที่'){
         accountNo = norm(row[1]);
+        // older layout: ประเภทบัญชี sat further along the บัญชีเลขที่ row
         for(var c=2;c<row.length-1;c++){
           if(norm(row[c]) === 'ประเภทบัญชี'){ accountType = norm(row[c+1]); break; }
         }
@@ -6260,12 +6321,17 @@ document.addEventListener('DOMContentLoaded', init);
       if(a === 'เดือน') headerRowIdx = i;
     }
     if(headerRowIdx>=0){
-      var header = (rows[headerRowIdx]||[]).map(norm);
+      // Header text with ALL whitespace removed, so a wrapped/double-spaced
+      // header cell still matches. Both vocabularies are accepted: the
+      // current template (จำนวนเงินฝากเข้า / จำนวนเงินถอนออก / ยอดคงเหลือ
+      // สิ้นเดือน) and the older one (รวมฝากเงิน / รวมถอนเงิน / ยอดคงเหลือ
+      // ปลายงวด). "จำนวนครั้ง" columns are deliberately not matched.
+      var header = (rows[headerRowIdx]||[]).map(function(h){ return norm(h).replace(/\s+/g,''); });
       var depIdx=-1, wdIdx=-1, balIdx=-1;
       for(var h=0;h<header.length;h++){
-        if(header[h].indexOf('รวมฝากเงิน')===0) depIdx=h;
-        else if(header[h].indexOf('รวมถอนเงิน')===0) wdIdx=h;
-        else if(header[h].indexOf('ยอดคงเหลือปลายงวด')===0) balIdx=h;
+        if(header[h].indexOf('จำนวนเงินฝากเข้า')===0 || header[h].indexOf('รวมฝากเงิน')===0) depIdx=h;
+        else if(header[h].indexOf('จำนวนเงินถอนออก')===0 || header[h].indexOf('รวมถอนเงิน')===0) wdIdx=h;
+        else if(header[h].indexOf('ยอดคงเหลือสิ้นเดือน')===0 || header[h].indexOf('ยอดคงเหลือปลายงวด')===0) balIdx=h;
       }
       for(var j=headerRowIdx+1;j<rows.length;j++){
         var row2 = rows[j] || [];
@@ -6294,7 +6360,7 @@ document.addEventListener('DOMContentLoaded', init);
 
   function fillBankBlock(idx, ex){
     if(ex.bankName) setVal(idFor('cc_bank_name',idx), findBankFullName(ex.bankName));
-    if(ex.accountType) setVal(idFor('cc_bank_acc_type',idx), DEPOSIT_TYPE_MAP[ex.accountType] || ex.accountType);
+    if(ex.accountType) setVal(idFor('cc_bank_acc_type',idx), mapDepositType(ex.accountType));
     if(ex.accountName) setVal(idFor('cc_bank_acc_name',idx), ex.accountName);
     if(ex.accountNo) setVal(idFor('cc_bank_acc_no',idx), ex.accountNo);
 
@@ -6320,7 +6386,7 @@ document.addEventListener('DOMContentLoaded', init);
         try{
           var data = new Uint8Array(e.target.result);
           var wb = XLSX.read(data, {type:'array'});
-          var sheetName = wb.SheetNames.filter(function(n){ return norm(n) === 'สรุปรวมทั้งหมด'; })[0];
+          var sheetName = pickSummarySheet(wb.SheetNames);
           if(!sheetName){ resolve({error:'nosheet', fileName:file.name}); return; }
           var ws = wb.Sheets[sheetName];
           var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
@@ -6349,7 +6415,7 @@ document.addEventListener('DOMContentLoaded', init);
       var okCount = 0, badFiles = [];
       results.forEach(function(res, i){
         var idx = i+1;
-        if(res.error === 'nosheet'){ badFiles.push(res.fileName + ' (ไม่พบชีท "สรุปรวมทั้งหมด")'); return; }
+        if(res.error === 'nosheet'){ badFiles.push(res.fileName + ' (ไม่พบชีท "Statement.")'); return; }
         if(res.error){ badFiles.push(res.fileName + ' (อ่านไฟล์ไม่สำเร็จ)'); return; }
         fillBankBlock(idx, res.ex);
         okCount++;
